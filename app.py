@@ -2,7 +2,7 @@ import streamlit as st
 import os
 
 # --- HEADER ---
-header_logo = "Edge_Lockup_Plum.jpg"
+header_logo = "Edge_Logomark_Plum.jpg"
 
 # Create centered layout for the header
 h_col_left, h_col1, h_col2, h_col_right = st.columns([1, 1, 6, 1])
