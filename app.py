@@ -7,6 +7,7 @@ import re
 from pypdf import PdfReader
 from openai import OpenAI
 import json
+import os
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -21,8 +22,10 @@ st.markdown("""
     h1, h2, h3 { color: #4a0f70 !important; font-family: 'Helvetica', sans-serif; }
     div.stButton > button { background-color: #4a0f70; color: white; border-radius: 8px; border: none; font-weight: bold; }
     div.stButton > button:hover { background-color: #914de8; color: white; }
-    [data-testid="stSidebar"] { background-color: #003731; }
-    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] label { color: #ffffff !important; }
+    
+    /* Updated Sidebar Colors - Light Lilac background, Plum text */
+    [data-testid="stSidebar"] { background-color: #f5f3fa; }
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] label { color: #4a0f70 !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -49,7 +52,7 @@ def load_and_clean_data(cand_file, opp_file, int_file):
         if 'Candidate: Candidate Name' in df_i.columns:
             df_i['Candidate Name'] = df_i['Candidate: Candidate Name'].str.strip()
     else:
-        df_i = pd.DataFrame() # Empty dataframe if not provided
+        df_i = pd.DataFrame()
 
     def extract_link(html_string):
         if pd.isna(html_string): return None
@@ -100,7 +103,7 @@ def evaluate_resume_with_ai(api_key, resume_text, tasks_list):
     {', '.join(tasks_list)}
     
     Resume Text:
-    {resume_text[:4000]} # Limiting to 4000 characters to manage token usage
+    {resume_text[:4000]}
     
     Return a JSON object with two keys:
     1. "score": An integer from 0 to 100 representing how well the candidate's skills match the required tasks.
@@ -175,7 +178,6 @@ def score_candidate(candidate, opportunity, interview_data, tasks_list, api_key)
         resume_text = extract_text_from_pdf(resume_url)
         ai_score, ai_justification = evaluate_resume_with_ai(api_key, resume_text, required_skills)
         
-        # Scale the AI score to a maximum of 50 points to balance with other metrics
         scaled_ai_score = int(ai_score * 0.5) 
         score += scaled_ai_score
         breakdown.append(f"AI Match Score: {ai_score}/100 (+{scaled_ai_score} pts) - {ai_justification}")
@@ -184,7 +186,12 @@ def score_candidate(candidate, opportunity, interview_data, tasks_list, api_key)
 
 # --- MAIN APP LAYOUT ---
 
-st.sidebar.image("Edge_Logomark_Plum.jpg", width=100)
+# Safely load the image so the app doesn't crash if the file is missing
+if os.path.isfile("Edge_Logomark_Plum.jpg"):
+    st.sidebar.image("Edge_Logomark_Plum.jpg", width=100)
+else:
+    st.sidebar.warning("Logo image not found. Please ensure 'Edge_Logomark_Plum.jpg' is uploaded to GitHub.")
+
 st.sidebar.title("Talent Shortlister")
 st.sidebar.markdown("---")
 
