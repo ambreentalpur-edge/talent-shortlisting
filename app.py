@@ -63,7 +63,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # --- HEADER (LOGO FIX) ---
-header_logo = "Edge_Lockup_Plum.jpg"
+header_logo = "Edge_Logomark_Plum.jpg"
 h_col_left, h_col1, h_col2, h_col_right = st.columns([1, 1, 6, 1])
 
 with h_col1:
