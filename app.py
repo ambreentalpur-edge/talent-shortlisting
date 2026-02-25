@@ -2,82 +2,65 @@ import streamlit as st
 import os
 
 # --- PAGE CONFIG ---
-tab_logo = "Edge_Logomark_Plum.jpg"
-st.set_page_config(page_title="EdgeOS", page_icon=tab_logo, layout="wide")
+st.set_page_config(page_title="EdgeOS", page_icon="Edge_Logomark_Plum.jpg", layout="wide")
 
-# --- BRANDING COLORS ---
-brand_plum = "#4a0f70"
-text_white = "#f8f9fa"
-
-# --- SIMPLIFIED CLICKABLE CSS ---
-st.markdown(f"""
+# --- NATIVE STREAMLIT CSS ---
+# We use this just to make the Streamlit buttons match your plum brand
+st.markdown("""
 <style>
-    .tile-wrapper {{
-        position: relative;
-        width: 100%;
-        max-width: 400px;
-        margin: auto;
-    }}
-    .card-box {{
-        background-color: {brand_plum};
-        color: {text_white};
-        padding: 25px;
-        border-radius: 15px;
-        height: 260px;
-        border: 1px solid #320a4d;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        text-align: center;
-        pointer-events: none; /* Crucial: lets the click pass to the button */
-    }}
-    /* The actual Streamlit button made invisible and full-size */
-    div.stButton > button {{
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 260px;
-        background: transparent !important;
-        color: transparent !important;
-        border: none !important;
-        z-index: 10;
-    }}
+    /* Style the Primary Buttons to match #4a0f70 */
+    div.stButton > button[kind="primary"] {
+        background-color: #4a0f70;
+        color: white;
+        border: none;
+        font-weight: bold;
+        border-radius: 8px;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background-color: #320a4d;
+        border: none;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# --- HEADER (LOGO FIX) ---
-header_logo = "Edge_Logomark_Plum.jpg"
-h_col1, h_col2 = st.columns([1, 6])
-with h_col1:
-    # Check current dir and parent dir for the logo
-    logo_path = header_logo if os.path.exists(header_logo) else f"../{header_logo}"
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=120)
+# --- HEADER ---
+col1, col2 = st.columns([1, 8])
+with col1:
+    if os.path.exists("Edge_Logomark_Plum.jpg"):
+        st.image("Edge_Logomark_Plum.jpg", width=100)
+    else:
+        st.warning("Logo missing")
 
-with h_col2:
+with col2:
     st.title("Welcome to EdgeOS")
     st.markdown("### *Find fast. Place smarter.*")
 
 st.write("---")
 
-# --- NAVIGATION TILES ---
-col_left, col_a, col_b, col_right = st.columns([1, 2, 2, 1])
+# --- RELIABLE NAVIGATION CARDS ---
+# Centered layout using Streamlit's native columns
+c_left, c_main1, c_main2, c_right = st.columns([1, 2, 2, 1])
 
-with col_a:
-    st.markdown(f'''<div class="tile-wrapper"><div class="card-box">
-                <div style="font-size:22px; font-weight:bold;">🔍 Talent Database Search</div>
-                <div style="font-size:15px; margin-top:10px;">Access global talent and update records daily.</div>
-                </div></div>''', unsafe_allow_html=True)
-    # EXACT FILENAME CHECK: Ensure this matches your file in the pages/ folder
-    if st.button("Open DB", key="nav_db"):
+with c_main1:
+    # A simple, solid colored box using standard HTML
+    st.markdown("""
+    <div style='background-color: #4a0f70; color: #f8f9fa; padding: 25px; border-radius: 12px; height: 200px; margin-bottom: 10px;'>
+        <h3 style='color: white; margin-top: 0;'>🔍 Talent Database Search</h3>
+        <p style='font-size: 16px;'>Access your global talent pool. Use the AI Chatbot to filter candidates and update records daily.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Native Streamlit button - 100% reliable for navigation
+    if st.button("Open Database", type="primary", use_container_width=True):
         st.switch_page("pages/1_Talent_Database.py")
 
-with col_b:
-    st.markdown(f'''<div class="tile-wrapper"><div class="card-box">
-                <div style="font-size:22px; font-weight:bold;">🎯 AI Shortlister</div>
-                <div style="font-size:15px; margin-top:10px;">Match candidates against opportunities instantly.</div>
-                </div></div>''', unsafe_allow_html=True)
-    # EXACT FILENAME CHECK: Ensure this matches your file in the pages/ folder
-    if st.button("Open Short", key="nav_short"):
+with c_main2:
+    st.markdown("""
+    <div style='background-color: #4a0f70; color: #f8f9fa; padding: 25px; border-radius: 12px; height: 200px; margin-bottom: 10px;'>
+        <h3 style='color: white; margin-top: 0;'>🎯 AI Shortlister</h3>
+        <p style='font-size: 16px;'>Match candidates against opportunities using GPT-4o logic to find the perfect fit instantly.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("Open Shortlister", type="primary", use_container_width=True):
         st.switch_page("pages/2_AI_Shortlister.py")
