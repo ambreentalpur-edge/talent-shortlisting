@@ -18,7 +18,7 @@ st.markdown(f"""
         background-color: {brand_plum};
         color: {text_white};
         padding: 30px;
-        border-radius: 15px;
+        border-radius: 10px;
         height: 180px;
         transition: transform 0.3s, box-shadow 0.3s;
         border: 1px solid #5a189a;
