@@ -7,7 +7,7 @@ app_logo = "Edge_Lockup_H_Plum.jpg"
 
 # --- 1. SET BROWSER TAB ICON ---
 st.set_page_config(
-    page_title="Edge Navigator", 
+    page_title="EdgeOS", 
     page_icon=tab_logo if os.path.exists(tab_logo) else "🟣",
     layout="wide"
 )
@@ -17,7 +17,7 @@ if os.path.exists(app_logo):
     # Adjust 'width' (e.g., 100 or 150) until it looks right to you
     st.sidebar.image(app_logo, width=120) 
 else:
-    st.sidebar.title("Edge Navigator")
+    st.sidebar.title("EdgeOS")
 
 
 # --- DATA LOADING ---
