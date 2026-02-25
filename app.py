@@ -1,28 +1,23 @@
 import streamlit as st
-import pandas as pd
-from openai import OpenAI
-import json
 import os
 
-# --- LOGO SETUP ---
-# Update "logo.jpg" to match your actual filename
-logo_path = "logo.jpg" 
+# --- LOGO PATHS ---
+tab_logo = "logo.jpg"            # File for the Chrome tab
+app_logo = "Edge_Logomark_Plum.jpg" # File for the sidebar/app interface
 
-# --- PAGE CONFIGURATION ---
+# --- 1. SET BROWSER TAB ICON ---
 st.set_page_config(
     page_title="Talent Matching", 
-    page_icon=logo_path if os.path.exists(logo_path) else "🟣",
+    page_icon=tab_logo if os.path.exists(tab_logo) else "🟣",
     layout="wide"
 )
 
-# --- SIDEBAR BRANDING ---
-if os.path.exists(logo_path):
-    st.sidebar.image(logo_path, use_container_width=True)
+# --- 2. SET SIDEBAR LOGO ---
+if os.path.exists(app_logo):
+    st.sidebar.image(app_logo, use_container_width=True)
 else:
-    st.sidebar.title("🟣 Talent Matching")
+    st.sidebar.title("Talent Matching")
 
-st.sidebar.header("Settings")
-# ... (rest of your sidebar code)
 
 # --- DATA LOADING ---
 def load_data(cand_file, opp_file):
@@ -68,7 +63,7 @@ def analyze_with_ai(api_key, resume_text, job_tasks, model="gpt-4o-mini"):
         return {"score": 0, "justification": "Analysis error."}
 
 # --- UI LAYOUT ---
-st.title("🟣 Edge Navigator")
+st.title("Talent Matching")
 st.markdown("### Talent Matching & AI Shortlisting")
 
 # Sidebar for Settings
