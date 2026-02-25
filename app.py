@@ -10,7 +10,7 @@ logo_path = "logo.jpg"
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Edge Navigator", 
+    page_title="Talent Matching", 
     page_icon=logo_path if os.path.exists(logo_path) else "🟣",
     layout="wide"
 )
@@ -19,7 +19,7 @@ st.set_page_config(
 if os.path.exists(logo_path):
     st.sidebar.image(logo_path, use_container_width=True)
 else:
-    st.sidebar.title("🟣 Edge Navigator")
+    st.sidebar.title("🟣 Talent Matching")
 
 st.sidebar.header("Settings")
 # ... (rest of your sidebar code)
