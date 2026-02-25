@@ -1,7 +1,21 @@
 import streamlit as st
 import pandas as pd
 import os
+# --- SUB-PAGE LOGO LOGIC ---
+header_logo = "Edge_Logomark_Plum.jpg"
 
+# Logic to find the logo if the script is running from the 'pages' folder
+if not os.path.exists(header_logo):
+    header_logo = "../Edge_Logomark_Plum.jpg"
+
+if os.path.exists(header_logo):
+    # If using in a column next to title
+    col1, col2 = st.columns([1, 6])
+    with col1:
+        st.image(header_logo, width=100)
+    with col2:
+        st.title("EdgeOS")
+        
 # --- BRANDED SIDEBAR NAVIGATION ---
 # Using the specific Logomark you mentioned for the app interface
 nav_logo = "Edge_Logomark_Plum.jpg" 
