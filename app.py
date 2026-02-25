@@ -2,21 +2,22 @@ import streamlit as st
 import os
 
 # --- LOGO PATHS ---
-tab_logo = "logo.jpg"            # File for the Chrome tab
-app_logo = "Edge_Logomark_Plum.jpg" # File for the sidebar/app interface
+tab_logo = "logo.jpg"            
+app_logo = "Edge_Logomark_Plum.jpg" 
 
 # --- 1. SET BROWSER TAB ICON ---
 st.set_page_config(
-    page_title="Talent Matching", 
+    page_title="Edge Navigator", 
     page_icon=tab_logo if os.path.exists(tab_logo) else "🟣",
     layout="wide"
 )
 
-# --- 2. SET SIDEBAR LOGO ---
+# --- 2. SET SIDEBAR LOGO (FIXED SIZE) ---
 if os.path.exists(app_logo):
-    st.sidebar.image(app_logo, use_container_width=True)
+    # Adjust 'width' (e.g., 100 or 150) until it looks right to you
+    st.sidebar.image(app_logo, width=120) 
 else:
-    st.sidebar.title("Talent Matching")
+    st.sidebar.title("Edge Navigator")
 
 
 # --- DATA LOADING ---
