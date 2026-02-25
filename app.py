@@ -64,7 +64,17 @@ def analyze_with_ai(api_key, resume_text, job_tasks, model="gpt-4o-mini"):
         return {"score": 0, "justification": "Analysis error."}
 
 # --- UI LAYOUT ---
-st.title("EdgeOS")
+# 1. Create two columns for the header alignment
+header_logo = "Edge_Lockup_Plum.jpg"
+col1, col2 = st.columns([1, 6]) # Adjust the numbers to change spacing
+
+with col1:
+    if os.path.exists(header_logo):
+        # Setting a width of 80 to 100 usually works best for a title icon
+        st.image(header_logo, width=100)
+
+with col2:
+    st.title("EdgeOS")
 st.markdown("### Talent Matching & AI Shortlisting")
 
 # Sidebar for Settings
