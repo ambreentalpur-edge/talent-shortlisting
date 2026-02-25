@@ -2,91 +2,83 @@ import streamlit as st
 import os
 
 # --- PAGE CONFIG ---
-# Using the filenames you confirmed earlier
 tab_logo = "logo.jpg"
 st.set_page_config(page_title="EdgeOS", page_icon=tab_logo, layout="wide")
 
 # --- BRANDING COLORS ---
-brand_plum = "#4a0f70"  # Your primary plum color
-text_white = "#f8f9fa"  # Off-white for readability
+brand_plum = "#4a0f70"
+text_white = "#f8f9fa"
 
-# --- CUSTOM CSS FOR PLUM CARDS ---
+# --- CUSTOM CSS ---
 st.markdown(f"""
 <style>
-    /* Main Card Styling */
     .card-box {{
         background-color: {brand_plum};
         color: {text_white};
-        padding: 30px;
+        padding: 25px;
         border-radius: 15px;
-        height: 180px;
-        transition: transform 0.3s, box-shadow 0.3s;
-        border: 1px solid #5a189a;
-        margin-bottom: 20px;
+        height: 260px; /* Slightly shorter height for better proportions */
+        transition: transform 0.3s;
+        border: 1px solid #320a4d;
+        margin-bottom: 10px;
+        display: flex;
+        flex-direction: column;
     }}
-    
-    /* Hover Effect */
     .card-box:hover {{
         transform: translateY(-10px);
-        box-shadow: 0 10px 20px rgba(0,0,0,0.3);
-        background-color: #9d4edd; /* Slightly lighter plum on hover */
+        background-color: #5e1a8a;
     }}
-
-    .card-title {{
-        font-size: 24px;
-        font-weight: bold;
-        margin-bottom: 15px;
-    }}
+    .card-title {{ font-size: 22px; font-weight: bold; margin-bottom: 12px; }}
+    .card-text {{ font-size: 15px; line-height: 1.4; }}
     
-    .card-text {{
-        font-size: 16px;
-        line-height: 1.5;
+    /* Button styling to match card width */
+    div.stButton > button {{
+        background-color: {brand_plum};
+        color: white;
+        border-radius: 10px;
+        border: 1px solid white;
+        margin-top: 5px;
     }}
 </style>
 """, unsafe_allow_html=True)
 
-# --- HEADER LOGO CHECK ---
-header_logo = "Edge_Logomark_Plum.jpg"
-col1, col2 = st.columns([1, 6])
+# --- HEADER ---
+header_logo = "Edge_Lockup_Plum.jpg"
+# Added buffer columns to center the header as well
+h_col_left, h_col1, h_col2, h_col_right = st.columns([1, 1, 6, 1])
 
-with col1:
-    # Check if file exists in the current directory
-    if os.path.exists(header_logo):
-        st.image(header_logo, width=120)
-    else:
-        st.error(f"Missing: {header_logo}") # Debugging message
-
-with col2:
+with h_col1:
+    if os.path.exists(header_logo): st.image(header_logo, width=120)
+with h_col2:
     st.title("Welcome to EdgeOS")
     st.markdown("### *Find fast. Place smarter.*")
 
 st.write("---")
 
-# --- CLICKABLE NAVIGATION CARDS ---
-col_a, col_b = st.columns(2)
+# --- NAVIGATION CARDS (CENTERED & NARROWER) ---
+# [1, 2, 2, 1] creates empty space on the ends to keep cards in the middle
+col_left, col_a, col_b, col_right = st.columns([1, 2, 2, 1])
 
 with col_a:
-    st.markdown(f"""
-    <div class="card-box">
-        <div class="card-title">🔍 Talent Database Search</div>
-        <div class="card-text">
-            Access your global talent pool. Use the AI Chatbot to filter candidates by skills, 
-            location, or experience and update your records daily.
+    st.markdown(f'''
+        <div class="card-box">
+            <div class="card-title">🔍 Talent Database Search</div>
+            <div class="card-text">
+                Access your global talent pool. Use the AI Chatbot to filter candidates and update records daily.
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("Open Database", use_container_width=True):
+    ''', unsafe_allow_html=True)
+    if st.button("Open Database", key="db_btn", use_container_width=True):
         st.switch_page("pages/1_Talent_Database.py")
 
 with col_b:
-    st.markdown(f"""
-    <div class="card-box">
-        <div class="card-title">🎯 AI Shortlister</div>
-        <div class="card-text">
-            Match candidates against specific job opportunities using GPT-4o logic. 
-            Rank talent instantly based on transferable skills and job requirements.
+    st.markdown(f'''
+        <div class="card-box">
+            <div class="card-title">🎯 AI Shortlister</div>
+            <div class="card-text">
+                Match candidates against opportunities using GPT-4o logic to find the perfect fit instantly.
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("Open Shortlister", use_container_width=True):
+    ''', unsafe_allow_html=True)
+    if st.button("Open Shortlister", key="short_btn", use_container_width=True):
         st.switch_page("pages/2_AI_Shortlister.py")
