@@ -129,10 +129,17 @@ def evaluate_resume_with_ai(api_key, resume_text, tasks_list, extra_reqs):
     except Exception as e:
         return 0, f"AI Error: {str(e)}"
 
-# NOTICE: We now pass dyn_country, dyn_industry, dyn_gender instead of pulling them from opportunity
 def score_candidate(candidate, opportunity, dyn_country, dyn_industry, dyn_gender, interview_data, tasks_list, extra_reqs, api_key):
     score = 0
     breakdown = []
+
+    # --- NAME EXCLUSION LOGIC ---
+    cand_name = str(candidate.get('Candidate Name', '')).strip().lower()
+    for req in extra_reqs:
+        req_lower = req.lower()
+        if any(word in req_lower for word in ['remove', 'exclude', 'drop', 'ignore', 'skip']):
+            if cand_name in req_lower:
+                return 0, ["Manually excluded via chat request"]
 
     # Dynamic Country Filter
     cand_country = str(candidate.get('Country', '')).strip()
@@ -153,8 +160,7 @@ def score_candidate(candidate, opportunity, dyn_country, dyn_industry, dyn_gende
         breakdown.append("Industry/School Match (+20)")
 
     if not interview_data.empty:
-        cand_name = candidate.get('Candidate Name', '')
-        feedback = interview_data[interview_data['Candidate Name'] == cand_name]
+        feedback = interview_data[interview_data['Candidate Name'].str.lower() == cand_name]
         if not feedback.empty:
             status = str(feedback.iloc[0].get('Status', '')).lower()
             rating = str(feedback.iloc[0].get('Total Score', '')).lower()
@@ -294,7 +300,7 @@ if uploaded_cand and uploaded_opp:
         
         # --- CHAT INTERFACE ---
         st.header("💬 Refine with AI")
-        st.caption("Tell the AI Recruiter what else to look for. (e.g., 'Only show candidates with pediatric experience')")
+        st.caption("Tell the AI Recruiter what else to look for. (e.g., 'Only show candidates with pediatric experience' or 'Remove Ramsha Durrani')")
         
         for req in st.session_state.extra_requirements:
             with st.chat_message("user", avatar="👤"):
