@@ -65,7 +65,7 @@ def analyze_with_ai(api_key, resume_text, job_tasks, model="gpt-4o-mini"):
 
 # --- UI LAYOUT ---
 # 1. Create two columns for the header alignment
-header_logo = "Edge_Lockup_Plum.jpg"
+header_logo = "Edge_Logomark_Plum.jpg"
 col1, col2 = st.columns([1, 6]) # Adjust the numbers to change spacing
 
 with col1:
