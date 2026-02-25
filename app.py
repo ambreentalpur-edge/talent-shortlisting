@@ -3,7 +3,7 @@ import os
 
 # --- LOGO PATHS ---
 tab_logo = "logo.jpg"            
-app_logo = "Edge_Logomark_Plum.jpg" 
+app_logo = "Edge_Lockup_H_Plum.jpg" 
 
 # --- 1. SET BROWSER TAB ICON ---
 st.set_page_config(
