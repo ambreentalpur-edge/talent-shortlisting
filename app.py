@@ -21,6 +21,8 @@ if "extra_requirements" not in st.session_state:
     st.session_state.extra_requirements = []
 if "shortlist_results" not in st.session_state:
     st.session_state.shortlist_results = None
+if "current_job" not in st.session_state:
+    st.session_state.current_job = None
 
 # === BRANDING CSS ===
 st.markdown("""
@@ -245,6 +247,12 @@ if uploaded_cand and uploaded_opp:
     st.header("1. Job Details & Dynamic Filters")
     opp_list = df_opp['Opportunity: Opportunity Name'].dropna().unique()
     selected_opp_name = st.selectbox("Choose a Job to Shortlist For:", opp_list)
+    
+    # === MEMORY RESET: If the user picks a new job, clear the old results ===
+    if st.session_state.current_job != selected_opp_name:
+        st.session_state.current_job = selected_opp_name
+        st.session_state.shortlist_results = None
+        st.session_state.extra_requirements = []
     
     job_row = df_opp[df_opp['Opportunity: Opportunity Name'] == selected_opp_name].iloc[0]
     task_columns = df_opp.columns[10:40] 
