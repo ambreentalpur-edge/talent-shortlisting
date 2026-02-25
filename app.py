@@ -8,6 +8,7 @@ from pypdf import PdfReader
 from openai import OpenAI
 import json
 import os
+import urllib.parse
 
 # === PAGE CONFIGURATION & STATE ===
 st.set_page_config(
@@ -65,7 +66,9 @@ def load_and_clean_data(cand_file, opp_file, int_file):
             if tag and tag.has_attr('href'):
                 href = tag['href']
                 if "javascript" in href:
-                    urls = re.findall(r'(https?://[^\s\'"]+)', str(html_string))
+                    # Decode the messy https%3A%2F%2F links
+                    decoded = urllib.parse.unquote(str(html_string))
+                    urls = re.findall(r'(https?://[^\s\'"<>]+)', decoded)
                     if urls: return urls[0]
                 return href
             return html_string 
@@ -140,13 +143,10 @@ def score_candidate(candidate, opportunity, dyn_country, dyn_industry, dyn_gende
     breakdown = []
 
     # === 1. STRICT HARD FILTERS ===
-    
-    # A. Missing Resume Filter
     resume_url = candidate.get('Clean_Resume_Link')
     if not resume_url or pd.isna(resume_url):
-        return 0, ["Disqualified: No Resume Found"]
+        return 0, ["Disqualified: No Resume Link Found in CSV"]
 
-    # B. Name Exclusion Logic (from Chat)
     cand_name = str(candidate.get('Candidate Name', '')).strip().lower()
     for req in extra_reqs:
         req_lower = req.lower()
@@ -154,30 +154,36 @@ def score_candidate(candidate, opportunity, dyn_country, dyn_industry, dyn_gende
             if cand_name in req_lower:
                 return 0, ["Manually excluded via chat request"]
 
-    # C. Dynamic Country Filter
     cand_country = str(candidate.get('Country', '')).strip()
     if dyn_country.lower() != 'any':
         if dyn_country.lower() != cand_country.lower():
-            return 0, ["Missed Country Requirement"]
+            return 0, [f"Missed Country Requirement (Needs {dyn_country}, has {cand_country})"]
 
-    # D. Dynamic Gender Filter
     cand_gender = str(candidate.get('Gender', '')).strip()
     if dyn_gender.lower() not in ['nan', 'no preference', 'both', 'any', '']:
         if dyn_gender.lower() != cand_gender.lower():
-            return 0, ["Missed Gender Requirement"]
+            return 0, [f"Missed Gender Requirement (Needs {dyn_gender}, has {cand_gender})"]
 
     # === 2. RESUME MATCHING (100% of the Score) ===
-    
     required_skills = [task for task in tasks_list if 'yes' in str(opportunity.get(task, '')).lower() or 'occasional' in str(opportunity.get(task, '')).lower()]
     
     resume_text = extract_text_from_pdf(resume_url)
+    
+    # === THE SAFETY NET ===
+    # If Salesforce blocks the PDF read, use their CSV data as their "resume"
+    if not resume_text.strip():
+        fallback_text = f"Industry: {candidate.get('School', 'N/A')}. "
+        if 'Background' in candidate:
+            fallback_text += f"Background/Experience: {candidate.get('Background', 'N/A')}."
+        resume_text = fallback_text
+        breakdown.append("Warning: PDF blocked by Salesforce. Scored via CSV profile.")
+
     ai_score, ai_justification = evaluate_resume_with_ai(api_key, resume_text, required_skills, extra_reqs)
     
     final_score = ai_score
-    breakdown.append(f"Resume Match: {ai_score}% | {ai_justification}")
+    breakdown.append(f"AI Match: {ai_score}% | {ai_justification}")
 
-    # === 3. SUPPLEMENTARY INFO (Added to notes, does not alter score) ===
-    
+    # === 3. SUPPLEMENTARY INFO ===
     cand_school = str(candidate.get('School', '')).strip()
     if dyn_industry.lower() == cand_school.lower() and dyn_industry != "":
         breakdown.append("Industry Matches JD")
@@ -200,7 +206,8 @@ def generate_shortlist(df_cand, job_row, dyn_country, dyn_industry, dyn_gender, 
         progress_bar.progress((index + 1) / total_cands, text=f"Analyzing candidate {index + 1} of {total_cands}...")
         final_score, notes = score_candidate(cand, job_row, dyn_country, dyn_industry, dyn_gender, df_int, task_columns, extra_reqs, api_key)
         
-        if final_score > 0:
+        # We now append EVERYONE (even >= 0) so you can read the Match Notes and see why they failed!
+        if final_score >= 0:
             results.append({
                 "Candidate Name": cand['Candidate Name'],
                 "Email": cand['Personal Email'],
@@ -296,12 +303,13 @@ if uploaded_cand and uploaded_opp:
         
         if not st.session_state.shortlist_results.empty:
             shortlist_count = int(dyn_placements) * 4
-            shortlist = st.session_state.shortlist_results.head(shortlist_count)
             
-            st.success(f"Found matching candidates based on JD and {len(st.session_state.extra_requirements)} custom requirements.")
+            # Show the top candidates based on placement multiplier
+            st.success(f"Displaying top matches and diagnostic notes.")
             
+            # Optionally show the entire list so user can see zero scores and diagnostic reasons
             st.dataframe(
-                shortlist,
+                st.session_state.shortlist_results.head(max(shortlist_count, 15)),
                 column_config={
                     "Resume": st.column_config.LinkColumn("Resume Link"),
                     "Match Score": st.column_config.ProgressColumn("Fit Score", min_value=0, max_value=100, format="%d")
