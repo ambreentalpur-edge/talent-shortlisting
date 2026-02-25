@@ -98,20 +98,25 @@ def evaluate_resume_with_ai(api_key, resume_text, tasks_list, extra_reqs):
     extra_reqs_text = "\n".join([f"- {req}" for req in extra_reqs]) if extra_reqs else "None."
     
     prompt = f"""
-    You are an expert HR recruiter. Evaluate the candidate's resume strictly against the standard job tasks and any additional custom requirements.
+    You are an expert HR recruiter. Evaluate the candidate's resume against the standard job tasks and any custom requirements.
     
     Standard Required Tasks:
     {', '.join(tasks_list)}
     
-    Additional Custom Requirements (Prioritize these heavily):
+    Additional Custom Requirements:
     {extra_reqs_text}
+    
+    IMPORTANT SCORING RULES:
+    1. Do not require a 100% perfect exact keyword match. Score based on the highest degree of overall capability.
+    2. Strongly consider TRANSFERABLE SKILLS. If a candidate has broad experience (like "inbound and outbound calls", "call center", or "customer support"), credit them for specific sub-tasks related to that experience (like scheduling, triaging, voicemails, or general inquiries).
+    3. Reward candidates who demonstrate the core competencies needed to perform the required tasks even if they use different terminology.
     
     Resume Text:
     {resume_text[:4000]}
     
     Return a JSON object with two keys:
-    1. "score": An integer from 0 to 100 representing how well the candidate's actual experience matches the required tasks and custom requirements.
-    2. "justification": A one-sentence explanation for the score, referencing their experience.
+    1. "score": An integer from 0 to 100 representing their alignment based on the rules above.
+    2. "justification": A one-sentence explanation for the score highlighting their transferable skills.
     """
     
     try:
