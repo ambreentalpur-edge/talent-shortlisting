@@ -30,12 +30,22 @@ st.markdown("""
 
 @st.cache_data
 def load_and_clean_data(cand_file, opp_file, int_file):
-    df_c = pd.read_csv(cand_file)
-    df_o = pd.read_csv(opp_file)
+    # Helper to handle different CSV encodings (UTF-8 vs Latin1/Excel)
+    def read_csv_safe(file):
+        try:
+            file.seek(0)
+            return pd.read_csv(file, encoding='utf-8')
+        except UnicodeDecodeError:
+            file.seek(0)
+            return pd.read_csv(file, encoding='ISO-8859-1')
+
+    # Load files with the safe reader
+    df_c = read_csv_safe(cand_file)
+    df_o = read_csv_safe(opp_file)
     
     # Process interview feedback only if uploaded
     if int_file is not None:
-        df_i = pd.read_csv(int_file)
+        df_i = read_csv_safe(int_file)
         if 'Candidate: Candidate Name' in df_i.columns:
             df_i['Candidate Name'] = df_i['Candidate: Candidate Name'].str.strip()
     else:
