@@ -9,12 +9,18 @@ from openai import OpenAI
 import json
 import os
 
-# --- PAGE CONFIGURATION ---
+# --- PAGE CONFIGURATION & STATE ---
 st.set_page_config(
     page_title="Edge Talent Shortlister",
     page_icon="🟣",
     layout="wide"
 )
+
+# Initialize Session State (Memory) for the chat and results
+if "extra_requirements" not in st.session_state:
+    st.session_state.extra_requirements = []
+if "shortlist_results" not in st.session_state:
+    st.session_state.shortlist_results = None
 
 # --- BRANDING CSS ---
 st.markdown("""
@@ -22,8 +28,6 @@ st.markdown("""
     h1, h2, h3 { color: #4a0f70 !important; font-family: 'Helvetica', sans-serif; }
     div.stButton > button { background-color: #4a0f70; color: white; border-radius: 8px; border: none; font-weight: bold; }
     div.stButton > button:hover { background-color: #914de8; color: white; }
-    
-    /* Updated Sidebar Colors - Light Lilac background, Plum text */
     [data-testid="stSidebar"] { background-color: #f5f3fa; }
     [data-testid="stSidebar"] h1, [data-testid="stSidebar"] label { color: #4a0f70 !important; }
     </style>
@@ -33,7 +37,6 @@ st.markdown("""
 
 @st.cache_data
 def load_and_clean_data(cand_file, opp_file, int_file):
-    # Helper to handle different CSV encodings (UTF-8 vs Latin1/Excel)
     def read_csv_safe(file):
         try:
             file.seek(0)
@@ -42,11 +45,9 @@ def load_and_clean_data(cand_file, opp_file, int_file):
             file.seek(0)
             return pd.read_csv(file, encoding='ISO-8859-1')
 
-    # Load files with the safe reader
     df_c = read_csv_safe(cand_file)
     df_o = read_csv_safe(opp_file)
     
-    # Process interview feedback only if uploaded
     if int_file is not None:
         df_i = read_csv_safe(int_file)
         if 'Candidate: Candidate Name' in df_i.columns:
@@ -89,25 +90,30 @@ def extract_text_from_pdf(url):
         return ""
     return ""
 
-def evaluate_resume_with_ai(api_key, resume_text, tasks_list):
-    """Calls OpenAI API to evaluate the resume against the required tasks."""
+def evaluate_resume_with_ai(api_key, resume_text, tasks_list, extra_reqs):
     if not resume_text.strip():
         return 0, "No readable text found in resume."
     
     client = OpenAI(api_key=api_key)
     
-    prompt = f"""
-    You are an expert HR recruiter. Evaluate the candidate's resume against the required tasks for an open position.
+    # Format extra requirements for the prompt
+    extra_reqs_text = "\n".join([f"- {req}" for req in extra_reqs]) if extra_reqs else "None."
     
-    Required Tasks:
+    prompt = f"""
+    You are an expert HR recruiter. Evaluate the candidate's resume against the standard job tasks and any additional custom requirements requested by the hiring manager.
+    
+    Standard Required Tasks:
     {', '.join(tasks_list)}
+    
+    Additional Custom Requirements (Prioritize these heavily):
+    {extra_reqs_text}
     
     Resume Text:
     {resume_text[:4000]}
     
     Return a JSON object with two keys:
-    1. "score": An integer from 0 to 100 representing how well the candidate's skills match the required tasks.
-    2. "justification": A one-sentence explanation for the score.
+    1. "score": An integer from 0 to 100 representing how well the candidate's skills match the tasks and additional requirements.
+    2. "justification": A one-sentence explanation for the score, specifically referencing if they met the additional custom requirements.
     """
     
     try:
@@ -126,11 +132,10 @@ def evaluate_resume_with_ai(api_key, resume_text, tasks_list):
     except Exception as e:
         return 0, f"AI Error: {str(e)}"
 
-def score_candidate(candidate, opportunity, interview_data, tasks_list, api_key):
+def score_candidate(candidate, opportunity, interview_data, tasks_list, extra_reqs, api_key):
     score = 0
     breakdown = []
 
-    # 1. HARD FILTERS
     opp_country = str(opportunity.get('Country Preference', '')).strip()
     cand_country = str(candidate.get('Country', '')).strip()
     if opp_country and opp_country.lower() not in ['nan', 'no preference', 'any', '']:
@@ -143,14 +148,12 @@ def score_candidate(candidate, opportunity, interview_data, tasks_list, api_key)
         if opp_gender.lower() != cand_gender.lower():
             return 0, ["Missed Gender Requirement"]
 
-    # 2. INDUSTRY MATCH
     opp_industry = str(opportunity.get('Industry', '')).strip()
     cand_school = str(candidate.get('School', '')).strip()
     if opp_industry.lower() == cand_school.lower():
         score += 20
         breakdown.append("Industry/School Match (+20)")
 
-    # 3. INTERVIEW FEEDBACK (OPTIONAL)
     if not interview_data.empty:
         cand_name = candidate.get('Candidate Name', '')
         feedback = interview_data[interview_data['Candidate Name'] == cand_name]
@@ -159,48 +162,77 @@ def score_candidate(candidate, opportunity, interview_data, tasks_list, api_key)
             status = str(feedback.iloc[0].get('Status', '')).lower()
             rating = str(feedback.iloc[0].get('Total Score', '')).lower()
             
-            if status == 'selected':
-                score += 30
-                breakdown.append("Feedback: Selected (+30)")
-            elif status == 'not selected':
-                score -= 10
-                breakdown.append("Feedback: Not Selected (-10)")
+            if status == 'selected': score += 30; breakdown.append("Feedback: Selected (+30)")
+            elif status == 'not selected': score -= 10; breakdown.append("Feedback: Not Selected (-10)")
             
-            if 'good' in rating or 'passed' in rating:
-                score += 10
-                breakdown.append("Feedback: Good Score (+10)")
+            if 'good' in rating or 'passed' in rating: score += 10; breakdown.append("Feedback: Good Score (+10)")
 
-    # 4. AI RESUME MATCHING
     required_skills = [task for task in tasks_list if 'yes' in str(opportunity.get(task, '')).lower() or 'occasional' in str(opportunity.get(task, '')).lower()]
     
     resume_url = candidate.get('Clean_Resume_Link')
-    if resume_url and required_skills:
+    if resume_url and (required_skills or extra_reqs):
         resume_text = extract_text_from_pdf(resume_url)
-        ai_score, ai_justification = evaluate_resume_with_ai(api_key, resume_text, required_skills)
+        ai_score, ai_justification = evaluate_resume_with_ai(api_key, resume_text, required_skills, extra_reqs)
         
-        scaled_ai_score = int(ai_score * 0.5) 
+        # Max scale is 50 points, but if custom requirements exist, we boost AI impact to 70
+        scale_factor = 0.7 if extra_reqs else 0.5
+        scaled_ai_score = int(ai_score * scale_factor) 
         score += scaled_ai_score
-        breakdown.append(f"AI Match Score: {ai_score}/100 (+{scaled_ai_score} pts) - {ai_justification}")
+        breakdown.append(f"AI Score: {ai_score}/100 - {ai_justification}")
 
     return score, breakdown
 
+def generate_shortlist(df_cand, job_row, df_int, task_columns, extra_reqs, api_key):
+    """Encapsulated shortlisting loop so it can be re-run via chat"""
+    results = []
+    progress_bar = st.progress(0, text="AI is reading resumes and analyzing requirements...")
+    total_cands = len(df_cand)
+    
+    for index, cand in df_cand.iterrows():
+        progress_bar.progress((index + 1) / total_cands, text=f"Analyzing candidate {index + 1} of {total_cands}...")
+        
+        final_score, notes = score_candidate(cand, job_row, df_int, task_columns, extra_reqs, api_key)
+        
+        if final_score > 0:
+            results.append({
+                "Candidate Name": cand['Candidate Name'],
+                "Email": cand['Personal Email'],
+                "Match Score": final_score,
+                "Country": cand['Country'],
+                "School": cand['School'],
+                "Resume": cand['Clean_Resume_Link'],
+                "Match Notes": " | ".join(notes)
+            })
+    
+    progress_bar.empty()
+    
+    if results:
+        results_df = pd.DataFrame(results).sort_values(by="Match Score", ascending=False)
+        st.session_state.shortlist_results = results_df
+    else:
+        st.session_state.shortlist_results = pd.DataFrame() # Empty dataframe if no matches
+
+
 # --- MAIN APP LAYOUT ---
 
-# Safely load the image so the app doesn't crash if the file is missing
 if os.path.isfile("Edge_Logomark_Plum.jpg"):
     st.sidebar.image("Edge_Logomark_Plum.jpg", width=100)
 else:
-    st.sidebar.warning("Logo image not found. Please ensure 'Edge_Logomark_Plum.jpg' is uploaded to GitHub.")
+    st.sidebar.warning("Logo image not found.")
 
 st.sidebar.title("Talent Shortlister")
 st.sidebar.markdown("---")
 
-# API Configuration
 openai_api_key = st.sidebar.text_input("OpenAI API Key", type="password")
-
 uploaded_cand = st.sidebar.file_uploader("Upload Candidate Info", type="csv")
 uploaded_opp = st.sidebar.file_uploader("Upload Opportunity Info", type="csv")
 uploaded_int = st.sidebar.file_uploader("Upload Interview Feedback (Optional)", type="csv")
+
+# Clear chat history button in sidebar
+if st.sidebar.button("Clear AI Chat History"):
+    st.session_state.extra_requirements = []
+    st.session_state.shortlist_results = None
+    st.rerun()
 
 if uploaded_cand and uploaded_opp:
     if not openai_api_key:
@@ -209,51 +241,36 @@ if uploaded_cand and uploaded_opp:
 
     df_cand, df_opp, df_int = load_and_clean_data(uploaded_cand, uploaded_opp, uploaded_int)
     
-    st.header("1. Select an Opportunity")
+    st.header("1. Job Details")
     opp_list = df_opp['Opportunity: Opportunity Name'].dropna().unique()
     selected_opp_name = st.selectbox("Choose a Job to Shortlist For:", opp_list)
     
     job_row = df_opp[df_opp['Opportunity: Opportunity Name'] == selected_opp_name].iloc[0]
-    
+    task_columns = df_opp.columns[10:40] 
+
     col1, col2, col3, col4 = st.columns(4)
     with col1: st.metric("Industry", job_row.get('Industry', 'N/A'))
     with col2: st.metric("Country", job_row.get('Country Preference', 'Any'))
     with col3: st.metric("Placements Needed", job_row.get('Placements', 1))
     with col4: st.metric("Target Shortlist", int(job_row.get('Placements', 1)) * 4)
 
-    # Identify Task Columns - Adjust indices if necessary
-    task_columns = df_opp.columns[10:40] 
+    st.markdown("---")
+    
+    # Generate Button
+    if st.button("Generate Initial Shortlist"):
+        st.session_state.extra_requirements = [] # Reset chat for new run
+        generate_shortlist(df_cand, job_row, df_int, task_columns, st.session_state.extra_requirements, openai_api_key)
 
-    if st.button("Run Shortlisting Algorithm"):
-        results = []
-        progress_bar = st.progress(0)
-        total_cands = len(df_cand)
+    # Display Results & Chat if it exists in session state
+    if st.session_state.shortlist_results is not None:
+        st.header("2. Shortlist Results")
         
-        for index, cand in df_cand.iterrows():
-            progress_bar.progress((index + 1) / total_cands)
-            
-            final_score, notes = score_candidate(cand, job_row, df_int, task_columns, openai_api_key)
-            
-            if final_score > 0:
-                results.append({
-                    "Candidate Name": cand['Candidate Name'],
-                    "Email": cand['Personal Email'],
-                    "Match Score": final_score,
-                    "Country": cand['Country'],
-                    "School": cand['School'],
-                    "Resume": cand['Clean_Resume_Link'],
-                    "Match Notes": " | ".join(notes)
-                })
-        
-        progress_bar.empty()
-        
-        if results:
-            results_df = pd.DataFrame(results).sort_values(by="Match Score", ascending=False)
+        if not st.session_state.shortlist_results.empty:
             placements = int(job_row.get('Placements', 1))
             shortlist_count = placements * 4
-            shortlist = results_df.head(shortlist_count)
+            shortlist = st.session_state.shortlist_results.head(shortlist_count)
             
-            st.success(f"Found {len(shortlist)} matching candidates.")
+            st.success(f"Found matching candidates based on standard JD and {len(st.session_state.extra_requirements)} custom requirements.")
             
             st.dataframe(
                 shortlist,
@@ -264,16 +281,35 @@ if uploaded_cand and uploaded_opp:
                 hide_index=True,
                 use_container_width=True
             )
-            
-            csv = shortlist.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download Shortlist CSV",
-                data=csv,
-                file_name=f"Shortlist_{selected_opp_name}.csv",
-                mime="text/csv"
-            )
         else:
             st.warning("No candidates matched the criteria.")
+
+        st.markdown("---")
+        
+        # --- CHAT INTERFACE ---
+        st.header("💬 Refine with AI")
+        st.caption("Tell the AI Recruiter what else to look for, and it will update the shortlist automatically.")
+        
+        # Display previous chat requirements
+        for req in st.session_state.extra_requirements:
+            with st.chat_message("user", avatar="👤"):
+                st.write(f"Requirement Added: **{req}**")
+
+        # Chat Input Box
+        if new_req := st.chat_input("E.g., They must know how to use Open Dental software"):
+            # 1. Save the new requirement
+            st.session_state.extra_requirements.append(new_req)
+            
+            # 2. Display the user's message immediately
+            with st.chat_message("user", avatar="👤"):
+                st.write(f"Requirement Added: **{new_req}**")
+                
+            # 3. Rerun the shortlisting algorithm with the new requirement
+            with st.spinner("AI is re-analyzing resumes against your new requirement..."):
+                generate_shortlist(df_cand, job_row, df_int, task_columns, st.session_state.extra_requirements, openai_api_key)
+            
+            # 4. Refresh the page to show the updated table
+            st.rerun()
 
 else:
     st.info("Please upload the required CSV files and provide an API key in the sidebar.")
