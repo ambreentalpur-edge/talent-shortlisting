@@ -2,13 +2,27 @@ import streamlit as st
 import pandas as pd
 from openai import OpenAI
 import json
+import os
+
+# --- LOGO SETUP ---
+# Update "logo.png" to match your actual filename
+logo_path = "logo.png" 
 
 # --- PAGE CONFIGURATION ---
-st.set_page_config(page_title="Edge Navigator", page_icon="🟣", layout="wide")
+st.set_page_config(
+    page_title="Edge Navigator", 
+    page_icon=logo_path if os.path.exists(logo_path) else "🟣",
+    layout="wide"
+)
 
-# Initialize Session State to keep results visible during navigation
-if "shortlist_results" not in st.session_state:
-    st.session_state.shortlist_results = None
+# --- SIDEBAR BRANDING ---
+if os.path.exists(logo_path):
+    st.sidebar.image(logo_path, use_container_width=True)
+else:
+    st.sidebar.title("🟣 Edge Navigator")
+
+st.sidebar.header("Settings")
+# ... (rest of your sidebar code)
 
 # --- DATA LOADING ---
 def load_data(cand_file, opp_file):
