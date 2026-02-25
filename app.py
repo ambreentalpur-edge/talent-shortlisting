@@ -2,20 +2,22 @@ import streamlit as st
 import os
 
 # --- PAGE CONFIG ---
-tab_logo = "Edge_Logomark_Plum.jpg"
+tab_logo = "logo.jpg"
 st.set_page_config(page_title="EdgeOS", page_icon=tab_logo, layout="wide")
 
 # --- BRANDING COLORS ---
 brand_plum = "#4a0f70"
 text_white = "#f8f9fa"
 
-# --- ADVANCED CSS FOR CLICKABLE TILES ---
+# --- REFINED CSS FOR CLICKABLE TILES ---
 st.markdown(f"""
 <style>
-    /* Container for the relative positioning of the button */
-    .tile-container {{
+    /* Container for the tile to control width */
+    .tile-wrapper {{
         position: relative;
-        margin-bottom: 20px;
+        width: 100%;
+        max-width: 400px; /* Limits the width of the boxes */
+        margin: auto;
     }}
 
     .card-box {{
@@ -30,9 +32,10 @@ st.markdown(f"""
         flex-direction: column;
         justify-content: center;
         text-align: center;
+        pointer-events: none; /* Allows the button underneath to catch the click */
     }}
 
-    .tile-container:hover .card-box {{
+    .tile-wrapper:hover .card-box {{
         transform: translateY(-10px);
         background-color: #5e1a8a;
     }}
@@ -40,7 +43,7 @@ st.markdown(f"""
     .card-title {{ font-size: 22px; font-weight: bold; margin-bottom: 12px; }}
     .card-text {{ font-size: 15px; line-height: 1.4; opacity: 0.9; }}
     
-    /* Transparent button that covers the entire tile */
+    /* Transparent button that captures the click */
     .stButton > button {{
         position: absolute;
         top: 0;
@@ -55,24 +58,23 @@ st.markdown(f"""
     }}
     
     .stButton > button:hover {{
-        border: none !important;
         background: transparent !important;
         color: transparent !important;
+        border: none !important;
     }}
 </style>
 """, unsafe_allow_html=True)
 
 # --- HEADER (LOGO FIX) ---
 header_logo = "Edge_Logomark_Plum.jpg"
-h_col_left, h_col1, h_col2, h_col_right = st.columns([1, 1, 6, 1])
+# Buffers [2, 1, 6, 2] help center the logo and title without stretching them
+h_col_l, h_col1, h_col2, h_col_r = st.columns([2, 1, 6, 2])
 
 with h_col1:
-    # Adding a check for root and relative paths to ensure logo shows
-    logo_to_use = header_logo if os.path.exists(header_logo) else f"../{header_logo}"
-    if os.path.exists(logo_to_use):
-        st.image(logo_to_use, width=120)
-    else:
-        st.error("Logo missing") #
+    if os.path.exists(header_logo):
+        st.image(header_logo, width=120)
+    elif os.path.exists(f"../{header_logo}"):
+        st.image(f"../{header_logo}", width=120)
 
 with h_col2:
     st.title("Welcome to EdgeOS")
@@ -80,30 +82,30 @@ with h_col2:
 
 st.write("---")
 
-# --- CLICKABLE NAVIGATION TILES ---
+# --- CLICKABLE NAVIGATION TILES (FIXED WIDTH) ---
+# [1, 2, 2, 1] creates the centering effect
 col_left, col_a, col_b, col_right = st.columns([1, 2, 2, 1])
 
 with col_a:
     st.markdown(f'''
-        <div class="tile-container">
+        <div class="tile-wrapper">
             <div class="card-box">
                 <div class="card-title">🔍 Talent Database Search</div>
                 <div class="card-text">Access your global talent pool. Use the AI Chatbot to filter candidates and update records daily.</div>
             </div>
         </div>
     ''', unsafe_allow_html=True)
-    # The button is invisible but covers the entire area above
-    if st.button("db_nav", key="db_nav"):
+    if st.button(" ", key="db_nav"):
         st.switch_page("pages/1_Talent_Database.py")
 
 with col_b:
     st.markdown(f'''
-        <div class="tile-container">
+        <div class="tile-wrapper">
             <div class="card-box">
                 <div class="card-title">🎯 AI Shortlister</div>
                 <div class="card-text">Match candidates against opportunities using GPT-4o logic to find the perfect fit instantly.</div>
             </div>
         </div>
     ''', unsafe_allow_html=True)
-    if st.button("short_nav", key="short_nav"):
+    if st.button("  ", key="short_nav"):
         st.switch_page("pages/2_AI_Shortlister.py")
