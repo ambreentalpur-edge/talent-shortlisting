@@ -1,45 +1,46 @@
 import streamlit as st
 import pandas as pd
+import os
 from openai import OpenAI
 import json
-import os
 
-# --- BRANDED SIDEBAR NAVIGATION ---
-# Using the specific Logomark you mentioned for the app interface
-nav_logo = "Edge_Logomark_Plum.jpg" 
-
-if os.path.exists(nav_logo):
-    st.sidebar.image(nav_logo, width=80)
-else:
-    # Fallback if the logo is in the root directory while you are in the /pages folder
-    if os.path.exists("../Edge_Logomark_Plum.jpg"):
-        st.sidebar.image("../Edge_Logomark_Plum.jpg", width=80)
-
-# The navigation button styled as a "Return"
-if st.sidebar.button("Return to Dashboard", use_container_width=True):
-    st.switch_page("app.py")
-
-st.sidebar.write("---")
-# --- PAGE SETUP ---
+# --- PAGE CONFIG ---
 st.set_page_config(page_title="AI Shortlister | EdgeOS", layout="wide")
+
+# --- SIDEBAR & BRANDING ---
+st.sidebar.markdown("""
+<style>
+    div.stButton > button { background-color: #4a0f70 !important; color: white !important; border-radius: 8px; border: none; }
+    div.stButton > button:hover { background-color: #320a4d !important; }
+</style>
+""", unsafe_allow_html=True)
+
+nav_logo = "../Edge_Logomark_Plum.jpg"
+if os.path.exists(nav_logo): st.sidebar.image(nav_logo, width=80)
+if st.sidebar.button("🏠 Return to Dashboard", use_container_width=True): st.switch_page("app.py")
+st.sidebar.write("---")
+
+# --- HEADER ---
+header_logo = "../Edge_Lockup_H_Plum.jpg"
+col1, col2 = st.columns([1, 6])
+with col1:
+    if os.path.exists(header_logo): st.image(header_logo, width=120)
+with col2: 
+    st.title("Talent Matching & AI Shortlister")
 
 # --- AI MATCHING LOGIC ---
 def analyze_with_ai(api_key, resume_text, job_tasks):
     client = OpenAI(api_key=api_key)
-    if not resume_text or len(str(resume_text)) < 50:
-        return {"score": 0, "justification": "Resume text too short for analysis."}
+    if not resume_text or pd.isna(resume_text) or len(str(resume_text)) < 50:
+        return {"score": 0, "justification": "Resume text missing or too short."}
 
     prompt = f"""
     You are an expert recruiter. Score this resume (0-100) based strictly on these job tasks: {job_tasks}.
     Focus on transferable skills and relevant experience.
-    
     Resume Text: {str(resume_text)[:5000]}
     
     Return ONLY a JSON object:
-    {{
-        "score": int,
-        "justification": "One sentence explaining why this candidate is a good or poor fit."
-    }}
+    {{ "score": int, "justification": "One clear sentence explaining the score." }}
     """
     try:
         response = client.chat.completions.create(
@@ -48,69 +49,63 @@ def analyze_with_ai(api_key, resume_text, job_tasks):
             messages=[{"role": "user", "content": prompt}]
         )
         return json.loads(response.choices[0].message.content)
-    except Exception as e:
-        return {"score": 0, "justification": f"AI Error: {str(e)}"}
+    except Exception:
+        return {"score": 0, "justification": "AI Analysis Error."}
 
-# --- UI HEADER ---
-header_logo = "Edge_Lockup_Plum.jpg"
-col1, col2 = st.columns([1, 6])
-with col1:
-    if os.path.exists(header_logo):
-        st.image(header_logo, width=100)
-with col2:
-    st.title("Talent Matching & AI Shortlister")
+# --- MAIN UI ---
+db_path = "master_database.csv"
+opp_path = "Opportunity Information.csv"
 
-# --- LOAD DATA ---
-if os.path.exists("master_database.csv") and os.path.exists("Opportunity Information.csv"):
-    df_c = pd.read_csv("master_database.csv")
-    df_o = pd.read_csv("Opportunity Information.csv")
+if os.path.exists(db_path) and os.path.exists(opp_path):
+    df_c = pd.read_csv(db_path)
+    df_o = pd.read_csv(opp_path)
     
-    # 1. Select the Job
     st.write("---")
     opp_list = df_o['Opportunity: Opportunity Name'].unique()
     selected_job = st.selectbox("Select Target Opportunity", opp_list)
     
-    # 2. Extract Job Tasks
+    # Ensure this index matches where your tasks are in the Opportunity CSV
     job_row = df_o[df_o['Opportunity: Opportunity Name'] == selected_job].iloc[0]
     job_tasks = job_row.iloc[10:40].dropna().tolist()
 
-    # 3. Settings & Filters
-    st.sidebar.header("Matching Settings")
+    st.sidebar.subheader("Matching Settings")
     api_key = st.sidebar.text_input("OpenAI API Key", type="password")
-    match_limit = st.sidebar.slider("Number of candidates to analyze", 5, 50, 20)
+    match_limit = st.sidebar.slider("Number of candidates to analyze", 5, 50, 10)
 
-    if st.button("🚀 Run AI Shortlisting"):
+    if st.button("🚀 Run AI Shortlisting", use_container_width=True):
         if not api_key:
             st.warning("Please enter your OpenAI API key in the sidebar.")
         else:
-            # Only analyze candidates who have scraped Resume Text
-            valid_cands = df_c[df_c['Resume Text'].str.len() > 50].head(match_limit)
+            # Only score candidates that actually have resume text
+            valid_cands = df_c[df_c['Resume Text'].notna()].head(match_limit)
             
-            results = []
-            progress_bar = st.progress(0)
-            status_text = st.empty()
+            if valid_cands.empty:
+                st.error("No valid resume text found. Check your database.")
+            else:
+                results = []
+                progress_bar = st.progress(0)
+                status_text = st.empty()
 
-            for i, (idx, cand) in enumerate(valid_cands.iterrows()):
-                status_text.text(f"Analyzing: {cand['Candidate Name']}...")
-                res = analyze_with_ai(api_key, cand['Resume Text'], job_tasks)
+                for i, (idx, cand) in enumerate(valid_cands.iterrows()):
+                    name = cand.get('Candidate Name', 'Unknown')
+                    status_text.text(f"Analyzing: {name}...")
+                    
+                    res = analyze_with_ai(api_key, cand['Resume Text'], job_tasks)
+                    results.append({
+                        "Name": name,
+                        "Industry": cand.get('Industry', 'N/A'),
+                        "Score": res.get('score', 0),
+                        "Justification": res.get('justification', '')
+                    })
+                    progress_bar.progress((i + 1) / len(valid_cands))
+
+                shortlist_df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
+                status_text.text("✅ Shortlisting Complete!")
                 
-                results.append({
-                    "Name": cand['Candidate Name'],
-                    "Score": res['score'],
-                    "Justification": res['justification'],
-                    "Location": cand.get('Country', 'N/A'),
-                    "Gender": cand.get('Gender', 'N/A')
-                })
-                progress_bar.progress((i + 1) / len(valid_cands))
-
-            # Display Results
-            shortlist_df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
-            st.write("### AI-Ranked Candidates")
-            st.dataframe(shortlist_df, use_container_width=True)
-            
-            # Export
-            csv_output = shortlist_df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Shortlist", csv_output, "shortlist.csv", "text/csv")
-            status_text.text("Shortlisting Complete!")
+                st.write("### AI-Ranked Candidates")
+                st.dataframe(shortlist_df, use_container_width=True)
+                
+                csv_output = shortlist_df.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Download Shortlist CSV", csv_output, "shortlist.csv", "text/csv")
 else:
-    st.error("Missing Data: Please ensure 'master_database.csv' and 'Opportunity Information.csv' exist.")
+    st.info("Please ensure both your candidate database is synced and 'Opportunity Information.csv' is uploaded.")
