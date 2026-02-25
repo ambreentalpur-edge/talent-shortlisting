@@ -9,6 +9,7 @@ from openai import OpenAI
 import json
 import os
 import urllib.parse
+import html
 
 # === PAGE CONFIGURATION & STATE ===
 st.set_page_config(
@@ -59,21 +60,27 @@ def load_and_clean_data(cand_file, opp_file, int_file):
         df_i = pd.DataFrame()
 
     def extract_link(html_string):
-        if pd.isna(html_string): return None
+        if pd.isna(html_string) or str(html_string).strip() == "": 
+            return None
+        raw_string = str(html_string)
+        
+        # 1. Best Method: Grab the visible text of the link (which is the clean URL)
         try:
-            soup = BeautifulSoup(str(html_string), 'html.parser')
+            soup = BeautifulSoup(raw_string, 'html.parser')
             tag = soup.find('a')
-            if tag and tag.has_attr('href'):
-                href = tag['href']
-                if "javascript" in href:
-                    # Decode the messy https%3A%2F%2F links
-                    decoded = urllib.parse.unquote(str(html_string))
-                    urls = re.findall(r'(https?://[^\s\'"<>]+)', decoded)
-                    if urls: return urls[0]
-                return href
-            return html_string 
+            if tag and tag.text.strip().startswith('http'):
+                return tag.text.strip()
         except:
-            return html_string
+            pass
+        
+        # 2. Fallback Method: Unquote and Regex
+        try:
+            decoded = urllib.parse.unquote(raw_string)
+            urls = re.findall(r'(https?://[^\s\'"<>]+)', decoded)
+            if urls: return urls[0]
+        except:
+            pass
+        return None
 
     if 'Public link' in df_c.columns:
         df_c['Clean_Resume_Link'] = df_c['Public link'].apply(extract_link)
@@ -85,15 +92,34 @@ def load_and_clean_data(cand_file, opp_file, int_file):
 def extract_text_from_pdf(url):
     if not url or pd.isna(url): return ""
     try:
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            f = io.BytesIO(response.content)
+        # Use a session and headers to look like a real browser
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        session = requests.Session()
+        res = session.get(url, headers=headers, timeout=10)
+        
+        # === SALESFORCE BYPASS LOGIC ===
+        # If the link is Salesforce and it returned a Webpage instead of a raw PDF
+        if "salesforce.com" in url and b'%PDF' not in res.content[:10]:
+            # Hunt through the HTML for the hidden direct-download URL
+            match = re.search(r'(/sfc/(?:dist|servlet)[^\'"]*download[^\'"]*)', res.text)
+            if match:
+                parsed = urllib.parse.urlparse(url)
+                base_url = f"{parsed.scheme}://{parsed.netloc}"
+                direct_url = base_url + html.unescape(match.group(1))
+                
+                # Fetch the actual raw PDF
+                res = session.get(direct_url, headers=headers, timeout=10)
+                
+        # Only proceed if we successfully bypassed and downloaded a real PDF file
+        if res.status_code == 200 and b'%PDF' in res.content[:10]:
+            f = io.BytesIO(res.content)
             reader = PdfReader(f)
             text = "".join(page.extract_text() for page in reader.pages)
             return text
-    except Exception:
+        else:
+            return ""
+    except Exception as e:
         return ""
-    return ""
 
 def evaluate_resume_with_ai(api_key, resume_text, tasks_list, extra_reqs):
     if not resume_text.strip():
@@ -164,22 +190,16 @@ def score_candidate(candidate, opportunity, dyn_country, dyn_industry, dyn_gende
         if dyn_gender.lower() != cand_gender.lower():
             return 0, [f"Missed Gender Requirement (Needs {dyn_gender}, has {cand_gender})"]
 
-    # === 2. RESUME MATCHING (100% of the Score) ===
+    # === 2. STRICT RESUME MATCHING (NO SAFETY NET) ===
     required_skills = [task for task in tasks_list if 'yes' in str(opportunity.get(task, '')).lower() or 'occasional' in str(opportunity.get(task, '')).lower()]
     
+    # Run the Salesforce bypass and extract text
     resume_text = extract_text_from_pdf(resume_url)
     
-    # === THE SAFETY NET ===
-    # If Salesforce blocks the PDF read, use their CSV data as their "resume"
     if not resume_text.strip():
-        fallback_text = f"Industry: {candidate.get('School', 'N/A')}. "
-        if 'Background' in candidate:
-            fallback_text += f"Background/Experience: {candidate.get('Background', 'N/A')}."
-        resume_text = fallback_text
-        breakdown.append("Warning: PDF blocked by Salesforce. Scored via CSV profile.")
+        return 0, ["Disqualified: Could not extract text from the resume link (Salesforce Block or Scanned Image)"]
 
     ai_score, ai_justification = evaluate_resume_with_ai(api_key, resume_text, required_skills, extra_reqs)
-    
     final_score = ai_score
     breakdown.append(f"AI Match: {ai_score}% | {ai_justification}")
 
@@ -206,7 +226,6 @@ def generate_shortlist(df_cand, job_row, dyn_country, dyn_industry, dyn_gender, 
         progress_bar.progress((index + 1) / total_cands, text=f"Analyzing candidate {index + 1} of {total_cands}...")
         final_score, notes = score_candidate(cand, job_row, dyn_country, dyn_industry, dyn_gender, df_int, task_columns, extra_reqs, api_key)
         
-        # We now append EVERYONE (even >= 0) so you can read the Match Notes and see why they failed!
         if final_score >= 0:
             results.append({
                 "Candidate Name": cand['Candidate Name'],
@@ -231,7 +250,7 @@ def generate_shortlist(df_cand, job_row, dyn_country, dyn_industry, dyn_gender, 
 if os.path.isfile("Edge_Logomark_Plum.jpg"):
     st.sidebar.image("Edge_Logomark_Plum.jpg", width=100)
 
-st.sidebar.title("Talent Shortlister")
+st.sidebar.title("Edge Navigator")
 st.sidebar.markdown("---")
 
 openai_api_key = st.sidebar.text_input("OpenAI API Key", type="password")
@@ -251,94 +270,133 @@ if uploaded_cand and uploaded_opp:
 
     df_cand, df_opp, df_int = load_and_clean_data(uploaded_cand, uploaded_opp, uploaded_int)
     
-    st.header("1. Job Details & Dynamic Filters")
-    opp_list = df_opp['Opportunity: Opportunity Name'].dropna().unique()
-    selected_opp_name = st.selectbox("Choose a Job to Shortlist For:", opp_list)
+    tab1, tab2 = st.tabs(["🎯 AI Shortlister", "🔍 Talent Search Database"])
     
-    # === MEMORY RESET: If the user picks a new job, clear the old results ===
-    if st.session_state.current_job != selected_opp_name:
-        st.session_state.current_job = selected_opp_name
-        st.session_state.shortlist_results = None
-        st.session_state.extra_requirements = []
-    
-    job_row = df_opp[df_opp['Opportunity: Opportunity Name'] == selected_opp_name].iloc[0]
-    task_columns = df_opp.columns[10:40] 
+    # ==========================================
+    # TAB 1: AI JOB SHORTLISTER
+    # ==========================================
+    with tab1:
+        st.header("1. Job Details & Dynamic Filters")
+        opp_list = df_opp['Opportunity: Opportunity Name'].dropna().unique()
+        selected_opp_name = st.selectbox("Choose a Job to Shortlist For:", opp_list)
+        
+        if st.session_state.current_job != selected_opp_name:
+            st.session_state.current_job = selected_opp_name
+            st.session_state.shortlist_results = None
+            st.session_state.extra_requirements = []
+        
+        job_row = df_opp[df_opp['Opportunity: Opportunity Name'] == selected_opp_name].iloc[0]
+        task_columns = df_opp.columns[10:40] 
 
-    # === DYNAMIC OVERRIDE UI ===
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1: 
-        dyn_industry = st.text_input("Industry / School Match", value=str(job_row.get('Industry', '')))
-        
-    with col2: 
-        cand_countries = [str(c).strip() for c in df_cand['Country'].dropna().unique() if str(c).strip() != '']
-        all_countries = ["Any"] + sorted(list(set(cand_countries)))
-        
-        default_c = str(job_row.get('Country Preference', 'Any')).strip()
-        if pd.isna(default_c) or default_c == '' or default_c.lower() in ['no preference', 'nan']:
-            default_c = "Any"
-        if default_c not in all_countries and default_c != "Any":
-            all_countries.append(default_c)
-            
-        dyn_country = st.selectbox("Target Country", options=all_countries, index=all_countries.index(default_c))
-        
-    with col3: 
-        default_g = str(job_row.get('Gender', 'Any')).strip().capitalize()
-        if default_g not in ["Male", "Female", "Both", "Any"]: default_g = "Any"
-        dyn_gender = st.selectbox("Target Gender", options=["Any", "Male", "Female", "Both"], index=["Any", "Male", "Female", "Both"].index(default_g))
-        
-    with col4: 
-        dyn_placements = st.number_input("Placements Needed", min_value=1, value=int(job_row.get('Placements', 1)))
-
-    st.markdown("---")
-    
-    # Generate Button
-    if st.button("Generate Initial Shortlist"):
-        st.session_state.extra_requirements = [] 
-        generate_shortlist(df_cand, job_row, dyn_country, dyn_industry, dyn_gender, df_int, task_columns, st.session_state.extra_requirements, openai_api_key)
-
-    # Display Results & Chat
-    if st.session_state.shortlist_results is not None:
-        st.header("2. Shortlist Results")
-        
-        if not st.session_state.shortlist_results.empty:
-            shortlist_count = int(dyn_placements) * 4
-            
-            # Show the top candidates based on placement multiplier
-            st.success(f"Displaying top matches and diagnostic notes.")
-            
-            # Optionally show the entire list so user can see zero scores and diagnostic reasons
-            st.dataframe(
-                st.session_state.shortlist_results.head(max(shortlist_count, 15)),
-                column_config={
-                    "Resume": st.column_config.LinkColumn("Resume Link"),
-                    "Match Score": st.column_config.ProgressColumn("Fit Score", min_value=0, max_value=100, format="%d")
-                },
-                hide_index=True,
-                use_container_width=True
-            )
-        else:
-            st.warning("No candidates matched the criteria.")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1: dyn_industry = st.text_input("Industry Match", value=str(job_row.get('Industry', '')))
+        with col2: 
+            cand_countries = [str(c).strip() for c in df_cand['Country'].dropna().unique() if str(c).strip() != '']
+            all_countries = ["Any"] + sorted(list(set(cand_countries)))
+            default_c = str(job_row.get('Country Preference', 'Any')).strip()
+            if pd.isna(default_c) or default_c == '' or default_c.lower() in ['no preference', 'nan']: default_c = "Any"
+            if default_c not in all_countries and default_c != "Any": all_countries.append(default_c)
+            dyn_country = st.selectbox("Target Country", options=all_countries, index=all_countries.index(default_c))
+        with col3: 
+            default_g = str(job_row.get('Gender', 'Any')).strip().capitalize()
+            if default_g not in ["Male", "Female", "Both", "Any"]: default_g = "Any"
+            dyn_gender = st.selectbox("Target Gender", options=["Any", "Male", "Female", "Both"], index=["Any", "Male", "Female", "Both"].index(default_g))
+        with col4: dyn_placements = st.number_input("Placements Needed", min_value=1, value=int(job_row.get('Placements', 1)))
 
         st.markdown("---")
         
-        # === CHAT INTERFACE ===
-        st.header("💬 Refine with AI")
-        st.caption("Tell the AI Recruiter what else to look for. (e.g., 'Only show candidates with pediatric experience' or 'Remove Ramsha Durrani')")
-        
-        for req in st.session_state.extra_requirements:
-            with st.chat_message("user", avatar="👤"):
-                st.write(f"Requirement Added: **{req}**")
+        if st.button("Generate Initial Shortlist"):
+            st.session_state.extra_requirements = [] 
+            generate_shortlist(df_cand, job_row, dyn_country, dyn_industry, dyn_gender, df_int, task_columns, st.session_state.extra_requirements, openai_api_key)
 
-        if new_req := st.chat_input("Enter a new requirement..."):
-            st.session_state.extra_requirements.append(new_req)
+        if st.session_state.shortlist_results is not None:
+            st.header("2. Shortlist Results")
+            if not st.session_state.shortlist_results.empty:
+                shortlist_count = int(dyn_placements) * 4
+                st.success(f"Displaying top matches and diagnostic notes.")
+                st.dataframe(
+                    st.session_state.shortlist_results.head(max(shortlist_count, 15)),
+                    column_config={
+                        "Resume": st.column_config.LinkColumn("Resume Link"),
+                        "Match Score": st.column_config.ProgressColumn("Fit Score", min_value=0, max_value=100, format="%d")
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+            else:
+                st.warning("No candidates matched the criteria.")
+
+            st.markdown("---")
+            st.header("💬 Refine with AI")
+            st.caption("Tell the AI Recruiter what else to look for. (e.g., 'Only show candidates with pediatric experience' or 'Remove Ramsha')")
             
-            with st.chat_message("user", avatar="👤"):
-                st.write(f"Requirement Added: **{new_req}**")
-                
-            with st.spinner("AI is re-analyzing resumes against your new requirement..."):
-                generate_shortlist(df_cand, job_row, dyn_country, dyn_industry, dyn_gender, df_int, task_columns, st.session_state.extra_requirements, openai_api_key)
-            st.rerun()
+            for req in st.session_state.extra_requirements:
+                with st.chat_message("user", avatar="👤"):
+                    st.write(f"Requirement Added: **{req}**")
+
+            if new_req := st.chat_input("Enter a new requirement..."):
+                st.session_state.extra_requirements.append(new_req)
+                with st.chat_message("user", avatar="👤"):
+                    st.write(f"Requirement Added: **{new_req}**")
+                with st.spinner("AI is re-analyzing resumes against your new requirement..."):
+                    generate_shortlist(df_cand, job_row, dyn_country, dyn_industry, dyn_gender, df_int, task_columns, st.session_state.extra_requirements, openai_api_key)
+                st.rerun()
+
+    # ==========================================
+    # TAB 2: TALENT SEARCH DATABASE
+    # ==========================================
+    with tab2:
+        st.header("Talent Search Database")
+        st.markdown("Instantly filter your entire candidate pool by specific skills, background, or demographics.")
+        
+        if not df_int.empty:
+            df_merged = pd.merge(
+                df_cand, 
+                df_int[['Candidate Name', 'Speciality', 'Background', 'Professional Skills', 'Status', 'Total Score']].drop_duplicates(subset=['Candidate Name']), 
+                on='Candidate Name', 
+                how='left'
+            )
+        else:
+            df_merged = df_cand.copy()
+            for col in ['Speciality', 'Background', 'Professional Skills', 'Status', 'Total Score']:
+                df_merged[col] = ""
+
+        f_col1, f_col2, f_col3 = st.columns(3)
+        with f_col1:
+            all_countries_db = [str(c).strip() for c in df_merged['Country'].dropna().unique() if str(c).strip() != '']
+            filter_country = st.multiselect("Filter by Country", options=sorted(all_countries_db))
+        with f_col2:
+            all_schools_db = [str(s).strip() for s in df_merged['School'].dropna().unique() if str(s).strip() != '']
+            filter_industry = st.multiselect("Filter by Industry (School)", options=sorted(all_schools_db))
+        with f_col3:
+            filter_keyword = st.text_input("🔍 Search Skills/Experience (e.g. Scheduling, Triage)")
+
+        filtered_df = df_merged.copy()
+        
+        if filter_country:
+            filtered_df = filtered_df[filtered_df['Country'].isin(filter_country)]
+        if filter_industry:
+            filtered_df = filtered_df[filtered_df['School'].isin(filter_industry)]
+        if filter_keyword:
+            search_cols = ['Speciality', 'Background', 'Professional Skills', 'School']
+            for col in search_cols:
+                if col in filtered_df.columns:
+                    filtered_df[col] = filtered_df[col].fillna("")
+            
+            mask = filtered_df[search_cols].apply(lambda x: x.str.contains(filter_keyword, case=False, na=False)).any(axis=1)
+            filtered_df = filtered_df[mask]
+
+        st.success(f"Found {len(filtered_df)} candidates matching your criteria.")
+        
+        st.dataframe(
+            filtered_df[['Candidate Name', 'Personal Email', 'Country', 'School', 'Speciality', 'Background', 'Professional Skills', 'Status', 'Clean_Resume_Link']],
+            column_config={
+                "Clean_Resume_Link": st.column_config.LinkColumn("Resume Link"),
+                "Personal Email": st.column_config.TextColumn("Email")
+            },
+            hide_index=True,
+            use_container_width=True
+        )
 
 else:
     st.info("Please upload the required CSV files and provide an API key in the sidebar.")
