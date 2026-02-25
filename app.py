@@ -7,7 +7,7 @@ tab_logo = "logo.jpg"
 st.set_page_config(page_title="EdgeOS", page_icon=tab_logo, layout="wide")
 
 # --- BRANDING COLORS ---
-brand_plum = "#7b2cbf"  # Your primary plum color
+brand_plum = "#4a0f70"  # Your primary plum color
 text_white = "#f8f9fa"  # Off-white for readability
 
 # --- CUSTOM CSS FOR PLUM CARDS ---
