@@ -64,7 +64,7 @@ def analyze_with_ai(api_key, resume_text, job_tasks, model="gpt-4o-mini"):
         return {"score": 0, "justification": "Analysis error."}
 
 # --- UI LAYOUT ---
-st.title("Talent Matching")
+st.title("EdgeOS")
 st.markdown("### Talent Matching & AI Shortlisting")
 
 # Sidebar for Settings
