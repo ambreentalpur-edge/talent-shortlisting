@@ -4,7 +4,7 @@ import os
 # --- PAGE CONFIG ---
 tab_logo = "logo.jpg"
 app_logo = "Edge_Lockup_H_Plum.jpg"
-st.set_page_config(page_title="EdgeOS", page_icon=tab_logo, layout="wide")
+st.set_page_config(page_title="EdgeOS", page_icon=app_logo, layout="wide")
 
 # --- CSS FOR HOVER CARDS ---
 st.markdown("""
