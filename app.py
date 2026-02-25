@@ -9,7 +9,7 @@ from openai import OpenAI
 import json
 import os
 
-# --- PAGE CONFIGURATION & STATE ---
+# === PAGE CONFIGURATION & STATE ===
 st.set_page_config(
     page_title="Edge Talent Shortlister",
     page_icon="🟣",
@@ -22,7 +22,7 @@ if "extra_requirements" not in st.session_state:
 if "shortlist_results" not in st.session_state:
     st.session_state.shortlist_results = None
 
-# --- BRANDING CSS ---
+# === BRANDING CSS ===
 st.markdown("""
     <style>
     h1, h2, h3 { color: #4a0f70 !important; font-family: 'Helvetica', sans-serif; }
@@ -33,7 +33,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNCTIONS ---
+# === FUNCTIONS ===
 
 @st.cache_data
 def load_and_clean_data(cand_file, opp_file, int_file):
@@ -98,7 +98,7 @@ def evaluate_resume_with_ai(api_key, resume_text, tasks_list, extra_reqs):
     extra_reqs_text = "\n".join([f"- {req}" for req in extra_reqs]) if extra_reqs else "None."
     
     prompt = f"""
-    You are an expert HR recruiter. Evaluate the candidate's resume against the standard job tasks and any additional custom requirements requested by the hiring manager.
+    You are an expert HR recruiter. Evaluate the candidate's resume strictly against the standard job tasks and any additional custom requirements.
     
     Standard Required Tasks:
     {', '.join(tasks_list)}
@@ -110,8 +110,8 @@ def evaluate_resume_with_ai(api_key, resume_text, tasks_list, extra_reqs):
     {resume_text[:4000]}
     
     Return a JSON object with two keys:
-    1. "score": An integer from 0 to 100 representing how well the candidate's skills match the tasks and additional requirements.
-    2. "justification": A one-sentence explanation for the score, specifically referencing if they met the additional custom requirements.
+    1. "score": An integer from 0 to 100 representing how well the candidate's actual experience matches the required tasks and custom requirements.
+    2. "justification": A one-sentence explanation for the score, referencing their experience.
     """
     
     try:
@@ -130,10 +130,16 @@ def evaluate_resume_with_ai(api_key, resume_text, tasks_list, extra_reqs):
         return 0, f"AI Error: {str(e)}"
 
 def score_candidate(candidate, opportunity, dyn_country, dyn_industry, dyn_gender, interview_data, tasks_list, extra_reqs, api_key):
-    score = 0
     breakdown = []
 
-    # --- NAME EXCLUSION LOGIC ---
+    # === 1. STRICT HARD FILTERS ===
+    
+    # A. Missing Resume Filter
+    resume_url = candidate.get('Clean_Resume_Link')
+    if not resume_url or pd.isna(resume_url):
+        return 0, ["Disqualified: No Resume Found"]
+
+    # B. Name Exclusion Logic (from Chat)
     cand_name = str(candidate.get('Candidate Name', '')).strip().lower()
     for req in extra_reqs:
         req_lower = req.lower()
@@ -141,45 +147,42 @@ def score_candidate(candidate, opportunity, dyn_country, dyn_industry, dyn_gende
             if cand_name in req_lower:
                 return 0, ["Manually excluded via chat request"]
 
-    # Dynamic Country Filter
+    # C. Dynamic Country Filter
     cand_country = str(candidate.get('Country', '')).strip()
     if dyn_country.lower() != 'any':
         if dyn_country.lower() != cand_country.lower():
             return 0, ["Missed Country Requirement"]
 
-    # Dynamic Gender Filter
+    # D. Dynamic Gender Filter
     cand_gender = str(candidate.get('Gender', '')).strip()
     if dyn_gender.lower() not in ['nan', 'no preference', 'both', 'any', '']:
         if dyn_gender.lower() != cand_gender.lower():
             return 0, ["Missed Gender Requirement"]
 
-    # Dynamic Industry Match
+    # === 2. RESUME MATCHING (100% of the Score) ===
+    
+    required_skills = [task for task in tasks_list if 'yes' in str(opportunity.get(task, '')).lower() or 'occasional' in str(opportunity.get(task, '')).lower()]
+    
+    resume_text = extract_text_from_pdf(resume_url)
+    ai_score, ai_justification = evaluate_resume_with_ai(api_key, resume_text, required_skills, extra_reqs)
+    
+    final_score = ai_score
+    breakdown.append(f"Resume Match: {ai_score}% | {ai_justification}")
+
+    # === 3. SUPPLEMENTARY INFO (Added to notes, does not alter score) ===
+    
     cand_school = str(candidate.get('School', '')).strip()
     if dyn_industry.lower() == cand_school.lower() and dyn_industry != "":
-        score += 20
-        breakdown.append("Industry/School Match (+20)")
+        breakdown.append("Industry Matches JD")
 
     if not interview_data.empty:
         feedback = interview_data[interview_data['Candidate Name'].str.lower() == cand_name]
         if not feedback.empty:
             status = str(feedback.iloc[0].get('Status', '')).lower()
-            rating = str(feedback.iloc[0].get('Total Score', '')).lower()
-            if status == 'selected': score += 30; breakdown.append("Feedback: Selected (+30)")
-            elif status == 'not selected': score -= 10; breakdown.append("Feedback: Not Selected (-10)")
-            if 'good' in rating or 'passed' in rating: score += 10; breakdown.append("Feedback: Good Score (+10)")
+            if status == 'selected': breakdown.append("Past Feedback: Selected")
+            elif status == 'not selected': breakdown.append("Past Feedback: Not Selected")
 
-    required_skills = [task for task in tasks_list if 'yes' in str(opportunity.get(task, '')).lower() or 'occasional' in str(opportunity.get(task, '')).lower()]
-    
-    resume_url = candidate.get('Clean_Resume_Link')
-    if resume_url and (required_skills or extra_reqs):
-        resume_text = extract_text_from_pdf(resume_url)
-        ai_score, ai_justification = evaluate_resume_with_ai(api_key, resume_text, required_skills, extra_reqs)
-        scale_factor = 0.7 if extra_reqs else 0.5
-        scaled_ai_score = int(ai_score * scale_factor) 
-        score += scaled_ai_score
-        breakdown.append(f"AI Score: {ai_score}/100 - {ai_justification}")
-
-    return score, breakdown
+    return final_score, breakdown
 
 def generate_shortlist(df_cand, job_row, dyn_country, dyn_industry, dyn_gender, df_int, task_columns, extra_reqs, api_key):
     results = []
@@ -209,7 +212,7 @@ def generate_shortlist(df_cand, job_row, dyn_country, dyn_industry, dyn_gender, 
         st.session_state.shortlist_results = pd.DataFrame()
 
 
-# --- MAIN APP LAYOUT ---
+# === MAIN APP LAYOUT ===
 
 if os.path.isfile("Edge_Logomark_Plum.jpg"):
     st.sidebar.image("Edge_Logomark_Plum.jpg", width=100)
@@ -241,7 +244,7 @@ if uploaded_cand and uploaded_opp:
     job_row = df_opp[df_opp['Opportunity: Opportunity Name'] == selected_opp_name].iloc[0]
     task_columns = df_opp.columns[10:40] 
 
-    # --- DYNAMIC OVERRIDE UI ---
+    # === DYNAMIC OVERRIDE UI ===
     col1, col2, col3, col4 = st.columns(4)
     
     with col1: 
@@ -288,7 +291,7 @@ if uploaded_cand and uploaded_opp:
                 shortlist,
                 column_config={
                     "Resume": st.column_config.LinkColumn("Resume Link"),
-                    "Match Score": st.column_config.ProgressColumn("Fit Score", min_value=0, max_value=120, format="%d")
+                    "Match Score": st.column_config.ProgressColumn("Fit Score", min_value=0, max_value=100, format="%d")
                 },
                 hide_index=True,
                 use_container_width=True
@@ -298,7 +301,7 @@ if uploaded_cand and uploaded_opp:
 
         st.markdown("---")
         
-        # --- CHAT INTERFACE ---
+        # === CHAT INTERFACE ===
         st.header("💬 Refine with AI")
         st.caption("Tell the AI Recruiter what else to look for. (e.g., 'Only show candidates with pediatric experience' or 'Remove Ramsha Durrani')")
         
