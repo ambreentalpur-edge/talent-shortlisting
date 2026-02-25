@@ -55,18 +55,6 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# --- HEADER ---
-header_logo = "Edge_Lockup_Plum.jpg"
-# Added buffer columns to center the header as well
-h_col_left, h_col1, h_col2, h_col_right = st.columns([1, 1, 6, 1])
-
-with h_col1:
-    if os.path.exists(header_logo): st.image(header_logo, width=120)
-with h_col2:
-    st.title("Welcome to EdgeOS")
-    st.markdown("### *Find fast. Place smarter.*")
-
-st.write("---")
 
 # --- NAVIGATION CARDS (CENTERED & NARROWER) ---
 # [1, 2, 2, 1] creates empty space on the ends to keep cards in the middle
