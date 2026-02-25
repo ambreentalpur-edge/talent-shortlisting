@@ -19,7 +19,7 @@ st.markdown(f"""
         color: {text_white};
         padding: 30px;
         border-radius: 15px;
-        height: 280px;
+        height: 180px;
         transition: transform 0.3s, box-shadow 0.3s;
         border: 1px solid #5a189a;
         margin-bottom: 20px;
@@ -46,7 +46,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # --- HEADER LOGO CHECK ---
-header_logo = "Edge_Lockup_Plum.jpg"
+header_logo = "Edge_Lockup_H_Plum.jpg"
 col1, col2 = st.columns([1, 6])
 
 with col1:
