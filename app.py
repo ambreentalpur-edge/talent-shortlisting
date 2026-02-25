@@ -1,9 +1,22 @@
 import streamlit as st
 import os
 
-# --- PAGE CONFIG ---
-tab_logo = "Edge_Logomark_Plum.jpg"
-st.set_page_config(page_title="EdgeOS", page_icon=tab_logo, layout="wide")
+# --- HEADER ---
+header_logo = "Edge_Lockup_Plum.jpg"
+
+# Create centered layout for the header
+h_col_left, h_col1, h_col2, h_col_right = st.columns([1, 1, 6, 1])
+
+with h_col1:
+    if os.path.exists(header_logo):
+        st.image(header_logo, width=120)
+    else:
+        # This will help you debug if the filename is wrong
+        st.error(f"Logo not found: {header_logo}") 
+
+with h_col2:
+    st.title("Welcome to EdgeOS")
+    st.markdown("### *Find fast. Place smarter.*")
 
 # --- BRANDING COLORS ---
 brand_plum = "#4a0f70"
