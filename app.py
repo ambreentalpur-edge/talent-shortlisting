@@ -2,7 +2,7 @@ import streamlit as st
 import os
 
 # --- PAGE CONFIG ---
-tab_logo = "logo.jpg"
+tab_logo = "Edge_Logomark_Plum.jpg"
 st.set_page_config(page_title="EdgeOS", page_icon=tab_logo, layout="wide")
 
 # --- BRANDING COLORS ---
