@@ -52,6 +52,10 @@ def load_and_clean_data(cand_file, opp_file, int_file):
     df_c = read_csv_safe(cand_file)
     df_o = read_csv_safe(opp_file)
     
+    # === THE FIX: Rename the messy Salesforce column in Candidate file ===
+    if 'Candidate: Candidate Name' in df_c.columns:
+        df_c.rename(columns={'Candidate: Candidate Name': 'Candidate Name'}, inplace=True)
+    
     if int_file is not None:
         df_i = read_csv_safe(int_file)
         if 'Candidate: Candidate Name' in df_i.columns:
@@ -64,7 +68,7 @@ def load_and_clean_data(cand_file, opp_file, int_file):
             return None
         raw_string = str(html_string)
         
-        # 1. Best Method: Grab the visible text of the link (which is the clean URL)
+        # 1. Best Method: Grab the visible text of the link
         try:
             soup = BeautifulSoup(raw_string, 'html.parser')
             tag = soup.find('a')
@@ -73,7 +77,7 @@ def load_and_clean_data(cand_file, opp_file, int_file):
         except:
             pass
         
-        # 2. Fallback Method: Unquote and Regex
+        # 2. Fallback Method
         try:
             decoded = urllib.parse.unquote(raw_string)
             urls = re.findall(r'(https?://[^\s\'"<>]+)', decoded)
@@ -92,25 +96,19 @@ def load_and_clean_data(cand_file, opp_file, int_file):
 def extract_text_from_pdf(url):
     if not url or pd.isna(url): return ""
     try:
-        # Use a session and headers to look like a real browser
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         session = requests.Session()
         res = session.get(url, headers=headers, timeout=10)
         
         # === SALESFORCE BYPASS LOGIC ===
-        # If the link is Salesforce and it returned a Webpage instead of a raw PDF
         if "salesforce.com" in url and b'%PDF' not in res.content[:10]:
-            # Hunt through the HTML for the hidden direct-download URL
             match = re.search(r'(/sfc/(?:dist|servlet)[^\'"]*download[^\'"]*)', res.text)
             if match:
                 parsed = urllib.parse.urlparse(url)
                 base_url = f"{parsed.scheme}://{parsed.netloc}"
                 direct_url = base_url + html.unescape(match.group(1))
-                
-                # Fetch the actual raw PDF
                 res = session.get(direct_url, headers=headers, timeout=10)
                 
-        # Only proceed if we successfully bypassed and downloaded a real PDF file
         if res.status_code == 200 and b'%PDF' in res.content[:10]:
             f = io.BytesIO(res.content)
             reader = PdfReader(f)
@@ -118,7 +116,7 @@ def extract_text_from_pdf(url):
             return text
         else:
             return ""
-    except Exception as e:
+    except Exception:
         return ""
 
 def evaluate_resume_with_ai(api_key, resume_text, tasks_list, extra_reqs):
@@ -193,7 +191,6 @@ def score_candidate(candidate, opportunity, dyn_country, dyn_industry, dyn_gende
     # === 2. STRICT RESUME MATCHING (NO SAFETY NET) ===
     required_skills = [task for task in tasks_list if 'yes' in str(opportunity.get(task, '')).lower() or 'occasional' in str(opportunity.get(task, '')).lower()]
     
-    # Run the Salesforce bypass and extract text
     resume_text = extract_text_from_pdf(resume_url)
     
     if not resume_text.strip():
