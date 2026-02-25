@@ -16,7 +16,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialize Session State (Memory) for the chat and results
+# Initialize Session State (Memory)
 if "extra_requirements" not in st.session_state:
     st.session_state.extra_requirements = []
 if "shortlist_results" not in st.session_state:
@@ -95,8 +95,6 @@ def evaluate_resume_with_ai(api_key, resume_text, tasks_list, extra_reqs):
         return 0, "No readable text found in resume."
     
     client = OpenAI(api_key=api_key)
-    
-    # Format extra requirements for the prompt
     extra_reqs_text = "\n".join([f"- {req}" for req in extra_reqs]) if extra_reqs else "None."
     
     prompt = f"""
@@ -126,45 +124,42 @@ def evaluate_resume_with_ai(api_key, resume_text, tasks_list, extra_reqs):
             ],
             temperature=0.2
         )
-        
         result = json.loads(response.choices[0].message.content)
         return int(result.get("score", 0)), result.get("justification", "AI processing completed.")
     except Exception as e:
         return 0, f"AI Error: {str(e)}"
 
-def score_candidate(candidate, opportunity, interview_data, tasks_list, extra_reqs, api_key):
+# NOTICE: We now pass dyn_country, dyn_industry, dyn_gender instead of pulling them from opportunity
+def score_candidate(candidate, opportunity, dyn_country, dyn_industry, dyn_gender, interview_data, tasks_list, extra_reqs, api_key):
     score = 0
     breakdown = []
 
-    opp_country = str(opportunity.get('Country Preference', '')).strip()
+    # Dynamic Country Filter
     cand_country = str(candidate.get('Country', '')).strip()
-    if opp_country and opp_country.lower() not in ['nan', 'no preference', 'any', '']:
-        if opp_country.lower() != cand_country.lower():
+    if dyn_country.lower() != 'any':
+        if dyn_country.lower() != cand_country.lower():
             return 0, ["Missed Country Requirement"]
 
-    opp_gender = str(opportunity.get('Gender', '')).strip()
+    # Dynamic Gender Filter
     cand_gender = str(candidate.get('Gender', '')).strip()
-    if opp_gender.lower() not in ['nan', 'no preference', 'both', '']:
-        if opp_gender.lower() != cand_gender.lower():
+    if dyn_gender.lower() not in ['nan', 'no preference', 'both', 'any', '']:
+        if dyn_gender.lower() != cand_gender.lower():
             return 0, ["Missed Gender Requirement"]
 
-    opp_industry = str(opportunity.get('Industry', '')).strip()
+    # Dynamic Industry Match
     cand_school = str(candidate.get('School', '')).strip()
-    if opp_industry.lower() == cand_school.lower():
+    if dyn_industry.lower() == cand_school.lower() and dyn_industry != "":
         score += 20
         breakdown.append("Industry/School Match (+20)")
 
     if not interview_data.empty:
         cand_name = candidate.get('Candidate Name', '')
         feedback = interview_data[interview_data['Candidate Name'] == cand_name]
-        
         if not feedback.empty:
             status = str(feedback.iloc[0].get('Status', '')).lower()
             rating = str(feedback.iloc[0].get('Total Score', '')).lower()
-            
             if status == 'selected': score += 30; breakdown.append("Feedback: Selected (+30)")
             elif status == 'not selected': score -= 10; breakdown.append("Feedback: Not Selected (-10)")
-            
             if 'good' in rating or 'passed' in rating: score += 10; breakdown.append("Feedback: Good Score (+10)")
 
     required_skills = [task for task in tasks_list if 'yes' in str(opportunity.get(task, '')).lower() or 'occasional' in str(opportunity.get(task, '')).lower()]
@@ -173,8 +168,6 @@ def score_candidate(candidate, opportunity, interview_data, tasks_list, extra_re
     if resume_url and (required_skills or extra_reqs):
         resume_text = extract_text_from_pdf(resume_url)
         ai_score, ai_justification = evaluate_resume_with_ai(api_key, resume_text, required_skills, extra_reqs)
-        
-        # Max scale is 50 points, but if custom requirements exist, we boost AI impact to 70
         scale_factor = 0.7 if extra_reqs else 0.5
         scaled_ai_score = int(ai_score * scale_factor) 
         score += scaled_ai_score
@@ -182,16 +175,14 @@ def score_candidate(candidate, opportunity, interview_data, tasks_list, extra_re
 
     return score, breakdown
 
-def generate_shortlist(df_cand, job_row, df_int, task_columns, extra_reqs, api_key):
-    """Encapsulated shortlisting loop so it can be re-run via chat"""
+def generate_shortlist(df_cand, job_row, dyn_country, dyn_industry, dyn_gender, df_int, task_columns, extra_reqs, api_key):
     results = []
     progress_bar = st.progress(0, text="AI is reading resumes and analyzing requirements...")
     total_cands = len(df_cand)
     
     for index, cand in df_cand.iterrows():
         progress_bar.progress((index + 1) / total_cands, text=f"Analyzing candidate {index + 1} of {total_cands}...")
-        
-        final_score, notes = score_candidate(cand, job_row, df_int, task_columns, extra_reqs, api_key)
+        final_score, notes = score_candidate(cand, job_row, dyn_country, dyn_industry, dyn_gender, df_int, task_columns, extra_reqs, api_key)
         
         if final_score > 0:
             results.append({
@@ -205,20 +196,17 @@ def generate_shortlist(df_cand, job_row, df_int, task_columns, extra_reqs, api_k
             })
     
     progress_bar.empty()
-    
     if results:
         results_df = pd.DataFrame(results).sort_values(by="Match Score", ascending=False)
         st.session_state.shortlist_results = results_df
     else:
-        st.session_state.shortlist_results = pd.DataFrame() # Empty dataframe if no matches
+        st.session_state.shortlist_results = pd.DataFrame()
 
 
 # --- MAIN APP LAYOUT ---
 
 if os.path.isfile("Edge_Logomark_Plum.jpg"):
     st.sidebar.image("Edge_Logomark_Plum.jpg", width=100)
-else:
-    st.sidebar.warning("Logo image not found.")
 
 st.sidebar.title("Talent Shortlister")
 st.sidebar.markdown("---")
@@ -228,7 +216,6 @@ uploaded_cand = st.sidebar.file_uploader("Upload Candidate Info", type="csv")
 uploaded_opp = st.sidebar.file_uploader("Upload Opportunity Info", type="csv")
 uploaded_int = st.sidebar.file_uploader("Upload Interview Feedback (Optional)", type="csv")
 
-# Clear chat history button in sidebar
 if st.sidebar.button("Clear AI Chat History"):
     st.session_state.extra_requirements = []
     st.session_state.shortlist_results = None
@@ -241,36 +228,55 @@ if uploaded_cand and uploaded_opp:
 
     df_cand, df_opp, df_int = load_and_clean_data(uploaded_cand, uploaded_opp, uploaded_int)
     
-    st.header("1. Job Details")
+    st.header("1. Job Details & Dynamic Filters")
     opp_list = df_opp['Opportunity: Opportunity Name'].dropna().unique()
     selected_opp_name = st.selectbox("Choose a Job to Shortlist For:", opp_list)
     
     job_row = df_opp[df_opp['Opportunity: Opportunity Name'] == selected_opp_name].iloc[0]
     task_columns = df_opp.columns[10:40] 
 
+    # --- DYNAMIC OVERRIDE UI ---
     col1, col2, col3, col4 = st.columns(4)
-    with col1: st.metric("Industry", job_row.get('Industry', 'N/A'))
-    with col2: st.metric("Country", job_row.get('Country Preference', 'Any'))
-    with col3: st.metric("Placements Needed", job_row.get('Placements', 1))
-    with col4: st.metric("Target Shortlist", int(job_row.get('Placements', 1)) * 4)
+    
+    with col1: 
+        dyn_industry = st.text_input("Industry / School Match", value=str(job_row.get('Industry', '')))
+        
+    with col2: 
+        cand_countries = [str(c).strip() for c in df_cand['Country'].dropna().unique() if str(c).strip() != '']
+        all_countries = ["Any"] + sorted(list(set(cand_countries)))
+        
+        default_c = str(job_row.get('Country Preference', 'Any')).strip()
+        if pd.isna(default_c) or default_c == '' or default_c.lower() in ['no preference', 'nan']:
+            default_c = "Any"
+        if default_c not in all_countries and default_c != "Any":
+            all_countries.append(default_c)
+            
+        dyn_country = st.selectbox("Target Country", options=all_countries, index=all_countries.index(default_c))
+        
+    with col3: 
+        default_g = str(job_row.get('Gender', 'Any')).strip().capitalize()
+        if default_g not in ["Male", "Female", "Both", "Any"]: default_g = "Any"
+        dyn_gender = st.selectbox("Target Gender", options=["Any", "Male", "Female", "Both"], index=["Any", "Male", "Female", "Both"].index(default_g))
+        
+    with col4: 
+        dyn_placements = st.number_input("Placements Needed", min_value=1, value=int(job_row.get('Placements', 1)))
 
     st.markdown("---")
     
     # Generate Button
     if st.button("Generate Initial Shortlist"):
-        st.session_state.extra_requirements = [] # Reset chat for new run
-        generate_shortlist(df_cand, job_row, df_int, task_columns, st.session_state.extra_requirements, openai_api_key)
+        st.session_state.extra_requirements = [] 
+        generate_shortlist(df_cand, job_row, dyn_country, dyn_industry, dyn_gender, df_int, task_columns, st.session_state.extra_requirements, openai_api_key)
 
-    # Display Results & Chat if it exists in session state
+    # Display Results & Chat
     if st.session_state.shortlist_results is not None:
         st.header("2. Shortlist Results")
         
         if not st.session_state.shortlist_results.empty:
-            placements = int(job_row.get('Placements', 1))
-            shortlist_count = placements * 4
+            shortlist_count = int(dyn_placements) * 4
             shortlist = st.session_state.shortlist_results.head(shortlist_count)
             
-            st.success(f"Found matching candidates based on standard JD and {len(st.session_state.extra_requirements)} custom requirements.")
+            st.success(f"Found matching candidates based on JD and {len(st.session_state.extra_requirements)} custom requirements.")
             
             st.dataframe(
                 shortlist,
@@ -288,27 +294,20 @@ if uploaded_cand and uploaded_opp:
         
         # --- CHAT INTERFACE ---
         st.header("💬 Refine with AI")
-        st.caption("Tell the AI Recruiter what else to look for, and it will update the shortlist automatically.")
+        st.caption("Tell the AI Recruiter what else to look for. (e.g., 'Only show candidates with pediatric experience')")
         
-        # Display previous chat requirements
         for req in st.session_state.extra_requirements:
             with st.chat_message("user", avatar="👤"):
                 st.write(f"Requirement Added: **{req}**")
 
-        # Chat Input Box
-        if new_req := st.chat_input("E.g., They must know how to use Open Dental software"):
-            # 1. Save the new requirement
+        if new_req := st.chat_input("Enter a new requirement..."):
             st.session_state.extra_requirements.append(new_req)
             
-            # 2. Display the user's message immediately
             with st.chat_message("user", avatar="👤"):
                 st.write(f"Requirement Added: **{new_req}**")
                 
-            # 3. Rerun the shortlisting algorithm with the new requirement
             with st.spinner("AI is re-analyzing resumes against your new requirement..."):
-                generate_shortlist(df_cand, job_row, df_int, task_columns, st.session_state.extra_requirements, openai_api_key)
-            
-            # 4. Refresh the page to show the updated table
+                generate_shortlist(df_cand, job_row, dyn_country, dyn_industry, dyn_gender, df_int, task_columns, st.session_state.extra_requirements, openai_api_key)
             st.rerun()
 
 else:
