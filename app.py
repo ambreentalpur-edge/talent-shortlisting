@@ -5,8 +5,8 @@ import json
 import os
 
 # --- LOGO SETUP ---
-# Update "logo.png" to match your actual filename
-logo_path = "logo.png" 
+# Update "logo.jpg" to match your actual filename
+logo_path = "logo.jpg" 
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
