@@ -4,6 +4,22 @@ from openai import OpenAI
 import json
 import os
 
+# --- BRANDED SIDEBAR NAVIGATION ---
+# Using the specific Logomark you mentioned for the app interface
+nav_logo = "Edge_Logomark_Plum.jpg" 
+
+if os.path.exists(nav_logo):
+    st.sidebar.image(nav_logo, width=80)
+else:
+    # Fallback if the logo is in the root directory while you are in the /pages folder
+    if os.path.exists("../Edge_Logomark_Plum.jpg"):
+        st.sidebar.image("../Edge_Logomark_Plum.jpg", width=80)
+
+# The navigation button styled as a "Return"
+if st.sidebar.button("Return to Dashboard", use_container_width=True):
+    st.switch_page("app.py")
+
+st.sidebar.write("---")
 # --- PAGE SETUP ---
 st.set_page_config(page_title="AI Shortlister | EdgeOS", layout="wide")
 
