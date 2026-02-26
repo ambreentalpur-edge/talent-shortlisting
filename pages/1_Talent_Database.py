@@ -19,10 +19,24 @@ st.sidebar.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-nav_logo = "../Edge_Logomark_Plum.jpg"
-if os.path.exists(nav_logo): st.sidebar.image(nav_logo, width=80)
-if st.sidebar.button("🏠 Return to Dashboard", use_container_width=True): st.switch_page("app.py")
-st.sidebar.write("---")
+# --- BRANDING & SIDEBAR ---
+st.sidebar.markdown("""
+<style>
+    [data-testid="stSidebarNav"] {display: none !important;}
+    div.stButton > button { background-color: #4a0f70 !important; color: white !important; border-radius: 8px; border: none; }
+    div.stButton > button:hover { background-color: #320a4d !important; }
+</style>
+""", unsafe_allow_html=True)
+
+# Add the new horizontal logo
+sidebar_logo = "../Edge_Lockup_H_Plum.jpg"
+if os.path.exists(sidebar_logo): 
+    st.sidebar.image(sidebar_logo, use_container_width=True)
+
+st.sidebar.write("---") # Adds a nice divider line under the logo
+
+if st.sidebar.button("🏠 Return to Dashboard", use_container_width=True): 
+    st.switch_page("EdgeOS.py")
 
 # --- DATABASE ENGINE ---
 def update_database(new_df):
