@@ -29,7 +29,7 @@ st.sidebar.markdown("""
 """, unsafe_allow_html=True)
 
 # Add the new horizontal logo
-sidebar_logo = "../Edge_Lockup_H_Plum.jpg"
+sidebar_logo = "Edge_Lockup_H_Plum.jpg"
 if os.path.exists(sidebar_logo): 
     st.sidebar.image(sidebar_logo, use_container_width=True)
 
