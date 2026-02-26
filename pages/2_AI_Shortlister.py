@@ -16,7 +16,7 @@ st.sidebar.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-sidebar_logo = "../Edge_Lockup_H_Plum.jpg"
+sidebar_logo = "Edge_Lockup_H_Plum.jpg"
 if os.path.exists(sidebar_logo): 
     st.sidebar.image(sidebar_logo, use_container_width=True)
 
