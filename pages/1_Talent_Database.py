@@ -90,17 +90,22 @@ if os.path.exists("master_database.csv"):
 
     st.write("---")
     st.subheader("🤖 AI Talent Scout")
-    user_query = st.text_input("Search keywords in resumes (e.g., 'ECW', 'MPhil', or 'Python')")
+    # Updated placeholder text to reflect the new comma functionality
+    user_query = st.text_input("Search keywords (use commas for 'AND', e.g., 'doctor, ECW' or 'public health, biostatistics')")
 
-    # Filter by AI Search
+    # Filter by AI Search (UPDATED FOR COMMAS)
     resume_col = next((c for c in cols if 'resume text' in c.lower()), None)
     if user_query and resume_col:
-        # Splits the query by spaces so you can search multiple keywords without needing exact phrases
-        keywords = user_query.split()
-        mask = df_db[resume_col].astype(str).str.contains(keywords[0], case=False, na=False)
-        for kw in keywords[1:]:
-            mask &= df_db[resume_col].astype(str).str.contains(kw, case=False, na=False)
-        results = df_db[mask]
+        # Splits the query by commas and removes any extra spaces around the words
+        keywords = [kw.strip() for kw in user_query.split(',') if kw.strip()]
+        
+        if keywords:
+            mask = df_db[resume_col].astype(str).str.contains(keywords[0], case=False, na=False)
+            for kw in keywords[1:]:
+                mask &= df_db[resume_col].astype(str).str.contains(kw, case=False, na=False)
+            results = df_db[mask]
+        else:
+            results = df_db
     else:
         results = df_db
 
