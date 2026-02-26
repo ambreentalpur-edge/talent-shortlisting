@@ -99,7 +99,7 @@ if os.path.exists(db_path) and os.path.exists(opp_path):
     # Settings
     st.sidebar.subheader("Matching Settings")
     api_key = st.sidebar.text_input("OpenAI API Key", type="password")
-    match_limit = st.sidebar.slider("Number of candidates to analyze", 5, 100, 10)
+    match_limit = st.sidebar.slider("Number of candidates to analyze", 3, 100, 10)
 
     if st.button("🚀 Run AI Shortlisting", use_container_width=True):
         if not api_key:
