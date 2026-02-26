@@ -22,7 +22,6 @@ if os.path.exists(sidebar_logo):
 
 st.sidebar.write("---")
 
-# Routing strictly back to app.py
 if st.sidebar.button("🏠 Return to Dashboard", use_container_width=True): 
     st.switch_page("app.py")
 st.sidebar.write("---")
@@ -50,7 +49,6 @@ def analyze_with_ai(api_key, resume_text, job_context):
     CANDIDATE RESUME:
     {str(resume_text)[:6000]}
     
-    Evaluate their direct experience with the specific tools, tasks, and soft skills requested.
     Return ONLY a JSON object:
     {{ "score": int, "justification": "One clear sentence explaining the exact reason for the score." }}
     """
@@ -64,6 +62,14 @@ def analyze_with_ai(api_key, resume_text, job_context):
     except Exception:
         return {"score": 0, "justification": "AI Analysis Error."}
 
+# --- UPLOAD SECTION ---
+with st.expander("➕ Update Opportunity List (Upload CSV)"):
+    new_opps = st.file_uploader("Upload Opportunity Information.csv here", type="csv")
+    if st.button("Sync Opportunities") and new_opps is not None:
+        df_new_o = pd.read_csv(new_opps)
+        df_new_o.to_csv("Opportunity Information.csv", index=False)
+        st.success("✅ Opportunity list updated! You can now select jobs from the dropdown.")
+
 # --- MAIN UI ---
 db_path = "master_database.csv"
 opp_path = "Opportunity Information.csv"
@@ -74,16 +80,14 @@ if os.path.exists(db_path) and os.path.exists(opp_path):
     
     st.write("---")
     
-    # 1. Select the Job safely
     if 'Opportunity: Opportunity Name' in df_o.columns:
         opp_list = df_o['Opportunity: Opportunity Name'].dropna().unique()
         selected_job = st.selectbox("Select Target Opportunity", opp_list)
         
-        # 2. Dynamically extract the specific job requirements from the Opportunity CSV
         job_row = df_o[df_o['Opportunity: Opportunity Name'] == selected_job].iloc[0]
         job_details = []
         
-        # Starts scanning from the 'Industry' column onwards, grabbing any requirement that isn't blank
+        # Build the AI prompt from the CSV columns
         start_idx = df_o.columns.get_loc('Industry') if 'Industry' in df_o.columns else 2
         for col in df_o.columns[start_idx:]:
             val = job_row[col]
@@ -104,7 +108,6 @@ if os.path.exists(db_path) and os.path.exists(opp_path):
     api_key = st.sidebar.text_input("OpenAI API Key", type="password")
     match_limit = st.sidebar.slider("Number of candidates to analyze", 5, 100, 20)
 
-    # Run AI
     if st.button("🚀 Run AI Shortlisting", use_container_width=True):
         if not api_key:
             st.warning("Please enter your OpenAI API key in the sidebar.")
@@ -113,27 +116,20 @@ if os.path.exists(db_path) and os.path.exists(opp_path):
             valid_cands = df_c[df_c[resume_col].notna()].head(match_limit) if resume_col else pd.DataFrame()
             
             if valid_cands.empty:
-                st.error("No valid resume text found in your database. Check your Talent Database sync.")
+                st.error("No valid resume text found. Sync your database first.")
             else:
                 results = []
                 progress_bar = st.progress(0)
                 status_text = st.empty()
 
                 for i, (idx, cand) in enumerate(valid_cands.iterrows()):
-                    # Find candidate name dynamically
                     name_col = next((c for c in df_c.columns if 'name' in c.lower()), 'Unknown')
                     name = cand.get(name_col, 'Unknown')
                     
                     status_text.text(f"Analyzing: {name}...")
-                    
                     res = analyze_with_ai(api_key, cand[resume_col], job_context)
                     
-                    # Package the results, dynamically grabbing Country and Status if they exist
-                    row_data = {
-                        "Name": name,
-                        "Score": res.get('score', 0),
-                        "Justification": res.get('justification', '')
-                    }
+                    row_data = {"Name": name, "Score": res.get('score', 0), "Justification": res.get('justification', '')}
                     
                     country_col = next((c for c in df_c.columns if 'country' in c.lower()), None)
                     if country_col: row_data["Country"] = cand.get(country_col, '')
@@ -144,21 +140,11 @@ if os.path.exists(db_path) and os.path.exists(opp_path):
                     results.append(row_data)
                     progress_bar.progress((i + 1) / len(valid_cands))
 
-                # Display Results
                 shortlist_df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
                 status_text.text("✅ Shortlisting Complete!")
-                
-                st.write("### AI-Ranked Candidates")
-                
-                # Make the table visually appealing (Score first, Justification last)
-                cols_order = ['Name', 'Score']
-                if 'Country' in shortlist_df.columns: cols_order.append('Country')
-                if 'Status' in shortlist_df.columns: cols_order.append('Status')
-                cols_order.append('Justification')
-                
-                st.dataframe(shortlist_df[cols_order], use_container_width=True)
+                st.dataframe(shortlist_df, use_container_width=True)
                 
                 csv_output = shortlist_df.to_csv(index=False).encode('utf-8')
                 st.download_button("📥 Download Shortlist CSV", csv_output, "shortlist.csv", "text/csv")
 else:
-    st.info("Please ensure both your candidate database is synced and 'Opportunity Information.csv' is uploaded to the main folder.")
+    st.info("Please ensure both your candidate database is synced and 'Opportunity Information.csv' is uploaded.")
