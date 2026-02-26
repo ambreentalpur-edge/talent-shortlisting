@@ -4,6 +4,12 @@ import os
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Talent Database | EdgeOS", layout="wide")
+# --- HIDE DEFAULT SIDEBAR MENU ---
+st.markdown("""
+<style>
+    [data-testid="stSidebarNav"] {display: none !important;}
+</style>
+""", unsafe_allow_html=True)
 
 # --- BRANDING & SIDEBAR ---
 st.sidebar.markdown("""
