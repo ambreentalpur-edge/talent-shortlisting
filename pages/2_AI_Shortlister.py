@@ -35,31 +35,47 @@ with col1:
 with col2: 
     st.title("Talent Matching & AI Shortlister")
 
-# --- AI MATCHING LOGIC ---
-def analyze_with_ai(api_key, resume_text, job_context):
+# --- PRECISION AI SCORING LOGIC ---
+def analyze_with_ai(api_key, resume_text, target_emr, call_required, other_tasks):
     client = OpenAI(api_key=api_key)
     if not resume_text or pd.isna(resume_text) or len(str(resume_text)) < 50:
-        return {"score": 0, "justification": "Resume text is too short or missing."}
+        return {"score": 0, "justification": "Resume missing or too short."}
 
     prompt = f"""
-    You are an expert recruiter. Score this candidate (0-100) based on these requirements:
-    {job_context}
+    You are a strict screening bot. Score this candidate (0-100) based on these EXACT rules:
     
-    Resume:
+    1. EMR/AMS TOOL MATCH (30 Points Max):
+       - Target System: "{target_emr}"
+       - Award 30 pts if resume mentions "{target_emr}".
+       - Award 10 pts if resume mentions ANY other EMR, CRM, AMS, or EHR tool.
+       - Award 0 pts if no system experience is found.
+    
+    2. CALLS & INTERACTION (30 Points Max):
+       - Interaction Required: {call_required}
+       - If required, award 30 pts if resume mentions "calls", "interaction", "dealing with customers", or "patients".
+       - Otherwise, 0 pts for this section.
+    
+    3. INDUSTRY & CORE TASKS (40 Points Max):
+       - Evaluate fit for: {other_tasks}
+       - Soft skills must be ignored (0 points).
+    
+    CANDIDATE RESUME:
     {str(resume_text)[:5000]}
     
     Return ONLY a JSON object:
-    {{ "score": int, "justification": "Short explanation." }}
+    {{ "score": int, "justification": "Breakdown: EMR pts, Call pts, Task pts." }}
     """
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             response_format={ "type": "json_object" },
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "system", "content": "You are a binary screening tool. Do not award points for soft skills."},
+                      {"role": "user", "content": prompt}],
+            temperature=0
         )
         return json.loads(response.choices[0].message.content)
     except Exception as e:
-        return {"score": 0, "justification": f"API Error: {str(e)[:50]}"}
+        return {"score": 0, "justification": f"API Error"}
 
 # --- UPLOAD SECTION ---
 with st.expander("➕ Update Opportunity List (Upload CSV)"):
@@ -74,8 +90,8 @@ db_path = "master_database.csv"
 opp_path = "Opportunity Information.csv"
 
 if os.path.exists(db_path) and os.path.exists(opp_path):
-    # RELOAD DATA BUTTON (The Refresh you asked for)
-    if st.button("🔄 Refresh Candidate Pool & Clear Filters"):
+    # REFRESH / RANDOMIZE BUTTON
+    if st.button("🔄 Refresh & Shuffle Candidates"):
         st.cache_data.clear()
         st.rerun()
 
@@ -89,50 +105,62 @@ if os.path.exists(db_path) and os.path.exists(opp_path):
         selected_job = st.selectbox("Select Target Opportunity", opp_list)
         
         job_row = df_o[df_o['Opportunity: Opportunity Name'] == selected_job].iloc[0]
-        # Logic to grab job requirements from CSV
-        job_details = [f"{col}: {job_row[col]}" for col in df_o.columns[5:] if pd.notna(job_row[col])]
-        job_context = "\n".join(job_details)
+        
+        # Extract the specific variables for the prompt
+        target_emr = str(job_row.get('AMS/CRM/EMR/EHR/PMS', 'Not Specified'))
+        in_call = str(job_row.get('Inbound Calls', ''))
+        out_call = str(job_row.get('Outbound Calls', ''))
+        call_req = "Yes" if (in_call.strip() or out_call.strip()) else "No"
+        other_tasks = f"{job_row.get('Industry', '')} - {job_row.get('Background', '')}"
+        
+        with st.expander("🔍 Scoring Logic for this Role"):
+            st.write(f"**Target EMR/AMS:** {target_emr}")
+            st.write(f"**Call Interaction Required:** {call_req}")
+            st.write(f"**Industry Context:** {other_tasks}")
+            
     else:
         st.error("Opportunity column not found.")
-        job_context = ""
+        target_emr, call_req, other_tasks = "N/A", "N/A", "N/A"
 
     # Settings
     st.sidebar.subheader("Matching Settings")
     api_key = st.sidebar.text_input("OpenAI API Key", type="password")
-    match_limit = st.sidebar.slider("Number of candidates to analyze", 3, 100, 10)
+    match_limit = st.sidebar.slider("Number of candidates to analyze", 5, 100, 10)
 
     if st.button("🚀 Run AI Shortlisting", use_container_width=True):
         if not api_key:
             st.warning("Enter your OpenAI API key.")
         else:
             resume_col = next((c for c in df_c.columns if 'resume text' in c.lower()), None)
-            
-            # THE SHUFFLE: This picks a NEW random set of candidates every time you refresh
+            # Pick a fresh random batch
             valid_cands = df_c[df_c[resume_col].notna()].sample(frac=1).head(match_limit)
             
             if valid_cands.empty:
-                st.error("No resumes found to score.")
+                st.error("No resumes found.")
             else:
                 results = []
                 prog = st.progress(0)
                 status = st.empty()
 
                 for i, (idx, cand) in enumerate(valid_cands.iterrows()):
-                    name = cand.get('Candidate Name', cand.get('Candidate: Candidate Name', 'Unknown'))
-                    status.text(f"Analyzing: {name}...")
+                    name_col = next((c for c in df_c.columns if 'name' in c.lower()), 'Candidate Name')
+                    name = cand.get(name_col, 'Unknown')
                     
-                    res = analyze_with_ai(api_key, cand[resume_col], job_context)
+                    status.text(f"Analyzing: {name}...")
+                    res = analyze_with_ai(api_key, cand[resume_col], target_emr, call_req, other_tasks)
                     
                     results.append({
                         "Name": name,
                         "Score": res.get('score', 0),
                         "Justification": res.get('justification', ''),
-                        "Status": cand.get('Go Live Status', 'N/A')
+                        "Country": cand.get('Country', 'N/A')
                     })
                     prog.progress((i + 1) / len(valid_cands))
 
                 shortlist_df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
-                status.text("✅ Analysis Complete!")
+                status.text("✅ Ranking Complete!")
                 st.dataframe(shortlist_df, use_container_width=True)
+                
+                st.download_button("📥 Download Shortlist CSV", shortlist_df.to_csv(index=False).encode('utf-8'), "shortlist.csv", "text/csv")
 else:
-    st.info("Ensure 'master_database.csv' and 'Opportunity Information.csv' are loaded.")
+    st.info("Ensure both CSV files are uploaded to begin.")
