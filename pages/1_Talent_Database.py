@@ -24,7 +24,6 @@ def update_database(new_df):
     if os.path.exists(master_path):
         master_df = pd.read_csv(master_path)
         updated = pd.concat([master_df, new_df])
-        # Safely find the name or ID column to drop duplicates
         dup_col = next((c for c in updated.columns if 'name' in c.lower() or 'id' in c.lower()), updated.columns[0])
         updated = updated.drop_duplicates(subset=[dup_col], keep='last')
         updated.to_csv(master_path, index=False)
@@ -61,7 +60,7 @@ if os.path.exists("master_database.csv"):
         sel_ind = st.sidebar.selectbox("Industry", industries)
         if sel_ind != "All": df_db = df_db[df_db['Industry'] == sel_ind]
         
-    # 2. Country Filter (Dynamically looks for 'country' in the column name)
+    # 2. Country Filter
     country_col = next((c for c in cols if 'country' in c.lower()), None)
     if country_col:
         countries = ["All"] + df_db[country_col].astype(str).dropna().unique().tolist()
@@ -74,50 +73,55 @@ if os.path.exists("master_database.csv"):
         genders = ["All"] + df_db[gender_col].astype(str).dropna().unique().tolist()
         sel_gender = st.sidebar.selectbox("Gender", genders)
         if sel_gender != "All": df_db = df_db[df_db[gender_col].astype(str) == sel_gender]
+
+    # 4. Go Live Status Filter
+    status_col = next((c for c in cols if 'go live status' in c.lower()), None)
+    if status_col:
+        statuses = ["All"] + df_db[status_col].astype(str).dropna().unique().tolist()
+        sel_status = st.sidebar.selectbox("Go Live Status", statuses)
+        if sel_status != "All": df_db = df_db[df_db[status_col].astype(str) == sel_status]
         
-    # 4. Education Filter (Catches 'School', 'Education', or 'University')
-    edu_col = next((c for c in cols if c.lower() in ['school', 'education', 'university', 'degree']), None)
-    if edu_col:
-        schools = ["All"] + df_db[edu_col].astype(str).dropna().unique().tolist()
-        sel_school = st.sidebar.selectbox("Education", schools)
-        if sel_school != "All": df_db = df_db[df_db[edu_col].astype(str) == sel_school]
+    # 5. School Filter
+    school_col = next((c for c in cols if 'school' in c.lower()), None)
+    if school_col:
+        schools = ["All"] + df_db[school_col].astype(str).dropna().unique().tolist()
+        sel_school = st.sidebar.selectbox("School / University", schools)
+        if sel_school != "All": df_db = df_db[df_db[school_col].astype(str) == sel_school]
 
     st.write("---")
     st.subheader("🤖 AI Talent Scout")
-    user_query = st.text_input("Search the database (e.g., 'Find candidates with biostatistics experience')")
+    user_query = st.text_input("Search keywords in resumes (e.g., 'ECW', 'MPhil', or 'Python')")
 
     # Filter by AI Search
     resume_col = next((c for c in cols if 'resume text' in c.lower()), None)
     if user_query and resume_col:
-        results = df_db[df_db[resume_col].astype(str).str.contains(user_query, case=False, na=False)]
+        # Splits the query by spaces so you can search multiple keywords without needing exact phrases
+        keywords = user_query.split()
+        mask = df_db[resume_col].astype(str).str.contains(keywords[0], case=False, na=False)
+        for kw in keywords[1:]:
+            mask &= df_db[resume_col].astype(str).str.contains(kw, case=False, na=False)
+        results = df_db[mask]
     else:
         results = df_db
 
-    # --- DISPLAY FIX (Prevents the KeyError) ---
+    # --- DISPLAY LOGIC ---
     if not results.empty:
         st.write(f"**Showing {len(results)} candidates:**")
         
-        # Safely build the columns to display based ONLY on what actually exists in your CSV
         display_cols = []
         name_col = next((c for c in cols if 'name' in c.lower()), cols[0]) 
         display_cols.append(name_col)
         
         if 'Industry' in cols: display_cols.append('Industry')
         if country_col: display_cols.append(country_col)
-        if gender_col: display_cols.append(gender_col)
-        if edu_col: display_cols.append(edu_col)
-        if resume_col: display_cols.append(resume_col)
+        if status_col: display_cols.append(status_col)
         
-        # Remove any duplicate columns just in case
         display_cols = list(dict.fromkeys(display_cols))
-        
         st.dataframe(results[display_cols], use_container_width=True)
     else:
         st.warning("No matches found. Try broadening your search terms.")
         
-    # Debug Tool: Helps you see exactly what your CSV columns are named
     with st.expander("🛠️ System Diagnostics: View Raw CSV Columns"):
-        st.write("If a filter isn't showing up, the column in your CSV might be named differently. Here are the exact column names the app sees:")
         st.write(cols)
 
 else:
