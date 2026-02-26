@@ -36,7 +36,7 @@ if os.path.exists(sidebar_logo):
 st.sidebar.write("---") # Adds a nice divider line under the logo
 
 if st.sidebar.button("🏠 Return to Dashboard", use_container_width=True): 
-    st.switch_page("EdgeOS.py")
+    st.switch_page("app.py")
 
 # --- DATABASE ENGINE ---
 def update_database(new_df):
@@ -51,7 +51,7 @@ def update_database(new_df):
         new_df.to_csv(master_path, index=False)
 
 # --- HEADER ---
-header_logo = "../Edge_Lockup_Plum.jpg"
+header_logo = "../Edge_Lockup_H_Plum.jpg"
 col1, col2 = st.columns([1, 6])
 with col1:
     if os.path.exists(header_logo): st.image(header_logo, width=120)
