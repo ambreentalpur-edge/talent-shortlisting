@@ -27,12 +27,11 @@ if st.sidebar.button("🏠 Return to Dashboard", use_container_width=True):
 st.sidebar.write("---")
 
 # --- HEADER ---
-header_logo = "Edge_Lockup_H_Plum.jpg"
+
 col1, col2 = st.columns([1, 6])
 with col1:
-    if os.path.exists(header_logo): st.image(header_logo, width=120)
-with col2: 
     st.title("Talent Matching & AI Shortlister")
+
 
 # --- AI MATCHING LOGIC ---
 def analyze_with_ai(api_key, resume_text, job_context):
